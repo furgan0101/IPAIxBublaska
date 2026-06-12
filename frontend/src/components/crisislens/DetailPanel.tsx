@@ -132,6 +132,18 @@ function PanelContent({
           {report.title}
         </h2>
 
+        {report.externalUrl && (
+          <a
+            href={report.externalUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-gold hover:underline"
+          >
+            Open original source
+            <ExternalLink className="h-3.5 w-3.5" />
+          </a>
+        )}
+
         <div className="mt-4 space-y-2 text-xs text-muted-foreground">
           <p className="flex items-center gap-2">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
@@ -215,6 +227,43 @@ function PanelContent({
           </p>
         </section>
 
+        {((report.mediaPreviews?.length ?? 0) > 0 || report.mediaConsistency) && (
+          <section>
+            <SectionLabel>Analyzed media</SectionLabel>
+            {(report.mediaPreviews?.length ?? 0) > 0 && (
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                {report.mediaPreviews?.map((src) => (
+                  <a
+                    key={src}
+                    href={src}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block overflow-hidden rounded-lg border border-border bg-muted"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- arbitrary remote OSINT hosts; next/image needs a domain allow-list */}
+                    <img
+                      src={src}
+                      alt="Media analyzed by the AI for plausibility"
+                      loading="lazy"
+                      className="h-28 w-full object-cover"
+                      onError={(e) => {
+                        const wrapper = e.currentTarget.parentElement;
+                        if (wrapper) wrapper.style.display = "none";
+                      }}
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
+            {report.mediaConsistency && (
+              <p className="mt-2.5 rounded-lg border border-border bg-card px-4 py-3 text-[13px] leading-relaxed text-foreground/90">
+                <span className="font-semibold">AI media check: </span>
+                {report.mediaConsistency}
+              </p>
+            )}
+          </section>
+        )}
+
         <section>
           <SectionLabel>Evidence ({report.evidenceLinks.length})</SectionLabel>
           <ul className="mt-2.5 space-y-2">
@@ -225,12 +274,27 @@ function PanelContent({
                 <li key={evidence.title}>
                   <a
                     href={evidence.href}
-                    onClick={(e) => e.preventDefault()}
+                    {...(evidence.href === "#"
+                      ? { onClick: (e: React.MouseEvent) => e.preventDefault() }
+                      : { target: "_blank", rel: "noreferrer" })}
                     className="group flex items-center gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:bg-muted/60"
                   >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
-                      <Icon className="h-4 w-4" />
-                    </span>
+                    {evidence.mediaPreview ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- arbitrary remote OSINT hosts
+                      <img
+                        src={evidence.mediaPreview}
+                        alt=""
+                        loading="lazy"
+                        className="h-9 w-9 shrink-0 rounded-md border border-border object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                    )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-xs font-medium text-foreground">
                         {evidence.title}

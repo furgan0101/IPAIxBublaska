@@ -36,7 +36,7 @@ from ingestion.presseportal import PresseportalConnector
 from ingestion.storage import FeedStore, StoredReport, content_hash
 from logic.geospatial import cluster_reports
 from logic.guidance import action_hint
-from logic.verification import Assessment, apply_event_type, assess_report
+from logic.verification import Assessment, annotate_report, assess_report
 from schemas import DebunkedReport, RawReport, VerifiedIncident
 
 logger = logging.getLogger("vost.ingestion")
@@ -190,8 +190,10 @@ class IngestionService:
                 # Heuristics are instant; the optional live LLM call is run in
                 # a thread so a slow gateway never blocks the event loop.
                 assessment = await asyncio.to_thread(assess_report, report)
+                # Stamp verdict context (event-type refinement, AI rationale,
+                # media-consistency note) onto the persisted report itself.
+                report = annotate_report(report, assessment)
                 if assessment.credible:
-                    report = apply_event_type(report, assessment)
                     stats["new_verified"] += 1
                 else:
                     stats["new_debunked"] += 1
@@ -283,6 +285,7 @@ class IngestionService:
                 timestamp=timestamp,
                 media_url=item.media_url,
                 url=item.url,
+                media=list(item.media),
             ),
             "",
         )
@@ -387,4 +390,7 @@ def _to_debunked(entry: StoredReport) -> DebunkedReport:
         reason_flagged=entry.reason or "Failed credibility checks",
         credibility_score=entry.score,
         url=report.url,
+        rationale=report.ai_rationale,
+        media_consistency=report.ai_media_note,
+        media_preview=report.first_media_preview(),
     )

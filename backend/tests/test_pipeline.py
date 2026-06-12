@@ -20,8 +20,15 @@ NOW = datetime(2026, 6, 12, 14, 0, tzinfo=timezone.utc)
 @pytest.fixture(autouse=True)
 def _default_mock_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     """Every test is deterministic/offline unless it opts into (fake) live mode."""
-    for var in ("LITELLM_API_KEY", "USE_LIVE_AI", "USE_VISION"):
+    for var in (
+        "LITELLM_API_KEY",
+        "LITELLM_API_KEYS",
+        "USE_LIVE_AI",
+        "USE_VISION",
+        "LLM_MAX_CALLS",
+    ):
         monkeypatch.delenv(var, raising=False)
+    verification.reset_call_budget()
 
 
 def make_report(**overrides: object) -> RawReport:
@@ -247,7 +254,7 @@ class _ExplodingClient:
 def _enable_live(monkeypatch: pytest.MonkeyPatch, client: object) -> None:
     monkeypatch.setenv("LITELLM_API_KEY", "test-key")
     monkeypatch.setenv("USE_LIVE_AI", "true")
-    monkeypatch.setattr(verification, "_get_client", lambda: client)
+    monkeypatch.setattr(verification, "_client_for", lambda key: client)
 
 
 def test_ai_mode_states(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,7 +318,7 @@ def test_llm_infra_failure_falls_back_to_heuristics(
 def test_heuristics_short_circuit_llm(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
-    def _tracking_client() -> object:
+    def _tracking_client(key: str) -> object:
         calls.append("client")
         return _FakeClient(
             '{"is_credible": true, "event_type": "flood",'
@@ -320,7 +327,7 @@ def test_heuristics_short_circuit_llm(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("LITELLM_API_KEY", "test-key")
     monkeypatch.setenv("USE_LIVE_AI", "true")
-    monkeypatch.setattr(verification, "_get_client", _tracking_client)
+    monkeypatch.setattr(verification, "_client_for", _tracking_client)
     assessment = verification.assess_report(
         make_report(text="SHARE BEFORE THEY DELETE this!!!")
     )

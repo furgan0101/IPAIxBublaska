@@ -94,6 +94,9 @@ def cluster_reports(
                         text=r.text,
                         timestamp=r.timestamp,
                         url=r.url,
+                        media_preview=r.first_media_preview(),
+                        ai_rationale=r.ai_rationale,
+                        ai_media_note=r.ai_media_note,
                     )
                     for r in ordered
                 ],

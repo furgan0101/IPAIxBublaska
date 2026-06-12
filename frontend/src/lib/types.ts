@@ -10,6 +10,12 @@ export interface SourceReport {
   timestamp: string;
   /** Link to the original post/release (live feeds only). */
   url?: string | null;
+  /** Thumbnail of attached media, if any. */
+  media_preview?: string | null;
+  /** AI analyst's verdict justification (live AI mode). */
+  ai_rationale?: string | null;
+  /** AI note on whether the media matches the claim (vision mode). */
+  ai_media_note?: string | null;
 }
 
 export interface VerifiedIncident {
@@ -41,6 +47,12 @@ export interface DebunkedReport {
   credibility_score: number;
   /** Link to the original post/release (live feeds only). */
   url?: string | null;
+  /** AI analyst's justification (live AI mode). */
+  rationale?: string | null;
+  /** AI note on whether the media matches the claim (vision mode). */
+  media_consistency?: string | null;
+  /** Thumbnail of the analyzed media, if any. */
+  media_preview?: string | null;
 }
 
 export interface SubmissionResult {

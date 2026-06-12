@@ -24,6 +24,10 @@ export default function Home() {
     setTheme(
       document.documentElement.classList.contains("dark") ? "dark" : "light",
     );
+    // Deep link straight into the dashboard (demos, kiosk mode, screenshots).
+    if (new URLSearchParams(window.location.search).has("dashboard")) {
+      setPhase("dashboard");
+    }
   }, []);
 
   const toggleTheme = useCallback(() => {

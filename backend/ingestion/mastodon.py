@@ -14,6 +14,7 @@ import httpx
 
 from ingestion.base import FetchedItem, get_json, html_to_text, parse_utc
 from ingestion.config import IngestionSettings
+from schemas import MediaItem
 
 _LIMIT_PER_TAG: int = 20
 _MIN_TEXT_LEN: int = 15
@@ -58,11 +59,10 @@ def _to_item(status: dict[str, Any]) -> FetchedItem | None:
     if len(text) < _MIN_TEXT_LEN:
         return None
     account = status.get("account") or {}
-    media_url: str | None = None
-    for attachment in status.get("media_attachments") or []:
-        if attachment.get("type") == "image":
-            media_url = attachment.get("url") or attachment.get("preview_url")
-            break
+    media = _extract_media(status)
+    media_url = next((m.url for m in media if m.type == "image"), None) or next(
+        (m.preview_url for m in media if m.preview_url), None
+    )
     return FetchedItem(
         source="mastodon",
         source_id=source_id,
@@ -71,4 +71,29 @@ def _to_item(status: dict[str, Any]) -> FetchedItem | None:
         timestamp=parse_utc(str(created_at)),
         url=status.get("url") or None,
         media_url=media_url,
+        media=media,
     )
+
+
+def _extract_media(status: dict[str, Any]) -> tuple[MediaItem, ...]:
+    """Attachments (image/video/gifv with preview frames) + link-card image."""
+    items: list[MediaItem] = []
+    for attachment in status.get("media_attachments") or []:
+        kind = str(attachment.get("type", ""))
+        url = attachment.get("url") or attachment.get("preview_url")
+        if kind in ("image", "video", "gifv") and url:
+            items.append(
+                MediaItem(
+                    url=str(url),
+                    type=kind,  # type: ignore[arg-type] — validated by Literal
+                    preview_url=attachment.get("preview_url"),
+                )
+            )
+    if not items:
+        card = status.get("card") or {}
+        card_image = card.get("image")
+        if card_image:
+            items.append(
+                MediaItem(url=str(card_image), type="image", preview_url=str(card_image))
+            )
+    return tuple(items)
