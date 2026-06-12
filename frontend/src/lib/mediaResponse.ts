@@ -11,6 +11,7 @@
  * changes, no network calls: this works fully on the offline mock feed.
  */
 
+import { safeNewDate } from "@/lib/format";
 import type { CrisisReport } from "@/lib/mockReports";
 
 /* ------------------------------------------------ deterministic noise */
@@ -116,7 +117,7 @@ export function firstSignalAt(reports: CrisisReport[]): string | null {
   for (const report of reports) {
     const stamps = [report.timestamp, ...report.evidenceLinks.map((e) => e.time)];
     for (const stamp of stamps) {
-      const t = new Date(stamp).getTime();
+      const t = safeNewDate(stamp).getTime();
       if (!Number.isNaN(t) && (earliest === null || t < earliest)) earliest = t;
     }
   }
@@ -132,7 +133,7 @@ function narrativeVolume(report: CrisisReport): number {
 }
 
 function narrativeTrend(report: CrisisReport, now: number): NarrativeTrend {
-  const ageMin = Math.max(0, (now - new Date(report.timestamp).getTime()) / 60_000);
+  const ageMin = Math.max(0, (now - safeNewDate(report.timestamp).getTime()) / 60_000);
   // Rumours keep spreading after first sight; real events cool off sooner.
   const risingHorizon = report.status === "ignored" ? 60 : 25;
   if (ageMin < risingHorizon) return "rising";
@@ -170,7 +171,7 @@ export function derivePulse(city: string, reports: CrisisReport[]): CityPulse {
   for (let i = 0; i < PULSE_BINS; i += 1) bins[i] = baseRng() * 1.8;
   const bump = [1, 0.55, 0.25];
   for (const report of reports) {
-    const ageMin = (now - new Date(report.timestamp).getTime()) / 60_000;
+    const ageMin = (now - safeNewDate(report.timestamp).getTime()) / 60_000;
     const centre = PULSE_BINS - 1 - Math.round((ageMin / PULSE_WINDOW_MIN) * (PULSE_BINS - 1));
     const amplitude = narrativeVolume(report) / 4;
     for (let d = -2; d <= 2; d += 1) {
@@ -234,7 +235,7 @@ export function derivePulse(city: string, reports: CrisisReport[]): CityPulse {
         href: e.href,
       })),
     ])
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .sort((a, b) => safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime())
     .slice(0, 9);
 
   return {
@@ -382,7 +383,7 @@ function citySlug(city: string): string {
 }
 
 function clock(lang: StatementLang, iso?: string | null): string {
-  const date = iso ? new Date(iso) : new Date();
+  const date = iso ? safeNewDate(iso) : new Date();
   return date.toLocaleTimeString(lang === "de" ? "de-DE" : "en-GB", {
     hour: "2-digit",
     minute: "2-digit",

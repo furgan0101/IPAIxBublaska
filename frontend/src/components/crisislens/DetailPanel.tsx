@@ -20,7 +20,7 @@ import {
   type CrisisReport,
   type SourceType,
 } from "@/lib/mockReports";
-import { timeAgo } from "@/lib/format";
+import { safeNewDate, timeAgo } from "@/lib/format";
 import ConfidenceRing from "./ConfidenceRing";
 
 const SOURCE_ICONS: Record<SourceType, typeof Newspaper> = {
@@ -96,7 +96,7 @@ function PanelContent({
   onClose: () => void;
 }) {
   const meta = STATUS_META[report.status];
-  const stamp = new Date(report.timestamp);
+  const stamp = safeNewDate(report.timestamp);
 
   return (
     <>

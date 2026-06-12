@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, RotateCcw } from "lucide-react";
+import { Activity, BarChart3, PanelLeftClose, PanelLeftOpen, RotateCcw } from "lucide-react";
 
 import {
   MOCK_REPORTS,
@@ -20,14 +20,16 @@ import {
   type PlacedMeasure,
 } from "@/lib/measures";
 import { useDashboard } from "@/hooks/useDashboard";
-import { timeAgo } from "@/lib/format";
+import { safeNewDate, timeAgo } from "@/lib/format";
 import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
+import TagFilter from "./TagFilter";
 import CityFocusPicker from "./CityFocusPicker";
 import CommandBanner from "./CommandBanner";
 import CommandConsole from "./CommandConsole";
+import ReportTimeline from "./ReportTimeline";
 import MeasurePalette from "./MeasurePalette";
 
 // Leaflet touches `window` — load the map strictly client-side.
@@ -76,6 +78,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusCity, setFocusCity] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, health, online } = useDashboard();
@@ -88,13 +92,31 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   // Real pipeline output in live mode; the curated mock set otherwise — the
   // dashboard always has something meaningful to show (offline judging!).
-  const reports: CrisisReport[] = useMemo(
+  const allReports: CrisisReport[] = useMemo(
     () =>
       mode === "live"
         ? adaptAll(incidents ?? [], debunked ?? [])
         : MOCK_REPORTS,
     [mode, incidents, debunked],
   );
+
+  const reports = useMemo(
+    () =>
+      activeTag
+        ? allReports.filter((r) => r.crisisType === activeTag)
+        : allReports,
+    [allReports, activeTag],
+  );
+
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allReports.forEach((r) => {
+      counts[r.crisisType] = (counts[r.crisisType] ?? 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [allReports]);
 
   const selected = useMemo(
     () => reports.find((r) => r.id === selectedId) ?? null,
@@ -239,30 +261,12 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [armedTool, selectedMeasureId, selectedId, focusCity]);
 
-  const stats = useMemo(() => {
-    const count = (s: CrisisReport["status"]): number =>
-      scopedReports.filter((r) => r.status === s).length;
-    const avg =
-      scopedReports.length > 0
-        ? Math.round(
-            scopedReports.reduce((sum, r) => sum + r.confidence, 0) /
-              scopedReports.length,
-          )
-        : 0;
-    return [
-      { label: "Active Reports", value: `${scopedReports.length}`, sub: "in current window", accent: "var(--muted-foreground)" },
-      { label: "Relevant Crises", value: `${count("relevant")}`, sub: "evidence-based escalation", accent: STATUS_META.relevant.color },
-      { label: "Needs Review", value: `${count("review")}`, sub: "human review required", accent: STATUS_META.review.color },
-      { label: "Ignored Signals", value: `${count("ignored")}`, sub: "insufficient corroboration", accent: STATUS_META.ignored.color },
-      { label: "Avg. Confidence", value: `${avg}%`, sub: "AI-assisted plausibility", accent: "var(--gold-fill)" },
-    ];
-  }, [scopedReports]);
 
   const feed = useMemo(
     () =>
       [...scopedReports].sort(
         (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
       ),
     [scopedReports],
   );
@@ -340,6 +344,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             </button>
           )}
 
+          <a
+            href="/analytics"
+            className="hidden items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex"
+            title="Signal analytics"
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+          </a>
+
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </header>
@@ -355,53 +367,19 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         />
       )}
 
-      {/* --------------------------------------------------- stats strip */}
-      {/* Collapses when a node is selected → focused map | dossier split. */}
-      <div
-        className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
-        style={{ maxHeight: selected ? 0 : 200, opacity: selected ? 0 : 1 }}
-        aria-hidden={Boolean(selected)}
-      >
-        <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex items-center gap-4 bg-background px-6 py-4"
-          >
-            <span
-              className="h-10 w-1 shrink-0 rounded-full"
-              style={{ background: stat.accent }}
-              aria-hidden
-            />
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {stat.label}
-              </p>
-              <p className="font-display text-3xl font-semibold leading-8 tabular-nums">
-                {stat.value}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground/70">
-                {stat.sub}
-              </p>
-            </div>
-          </div>
-        ))}
-        </div>
-      </div>
-
       {/* ----------------------------------------------------- main row */}
       <div className="flex min-h-0 flex-1">
-        {/* Latest signals rail — collapses away when a node is selected. */}
+        {/* Latest signals rail — collapses away when a node is selected or user toggles. */}
         <aside
           className="hidden shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out lg:block"
-          style={{ width: selected ? 0 : 300 }}
-          aria-hidden={Boolean(selected)}
+          style={{ width: selected || !feedOpen ? 0 : 300 }}
+          aria-hidden={Boolean(selected) || !feedOpen}
         >
           <div className="flex h-full w-[300px] flex-col border-r border-border bg-background">
           <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
             <Activity className="h-4 w-4 text-gold" />
             <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
-              Latest Signals
+              News Feed
             </h2>
             <span className="ml-auto rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
               {feed.length}
@@ -409,6 +387,9 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
 
           <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
+              <ReportTimeline reports={feed} />
+            </div>
             {feed.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
                 No signals in the current window yet — the pipeline is polling
@@ -467,6 +448,20 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
         {/* Map column */}
         <main className="relative min-w-0 flex-1">
+          {/* Feed toggle — anchored to the left edge of the map so it's always visible */}
+          <button
+            type="button"
+            onClick={() => setFeedOpen((o) => !o)}
+            title={feedOpen ? "Collapse signals feed" : "Expand signals feed"}
+            className="absolute left-0 top-1/2 z-[1000] hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-border bg-card p-1.5 text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground lg:flex"
+          >
+            {feedOpen ? (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            )}
+          </button>
+
           <CrisisMap
             reports={scopedReports}
             selectedId={selectedId}
@@ -484,33 +479,18 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onResizeZone={(id, radiusM) => updateMeasure(id, { radiusM })}
           />
 
+          {/* Tag filter */}
+          <TagFilter
+            tags={tagCounts}
+            active={activeTag}
+            onChange={setActiveTag}
+          />
+
           {/* Measure palette — the editable tactical layer (Command Mode). */}
           {focusCity && !selected && (
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
 
-          {/* Triage legend */}
-          <div className="pointer-events-none absolute bottom-4 left-4 z-[1000] rounded-lg border border-border bg-card/95 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              AI-assisted triage
-            </p>
-            <ul className="mt-2 space-y-1.5">
-              {(
-                Object.keys(STATUS_META) as (keyof typeof STATUS_META)[]
-              ).map((status) => (
-                <li
-                  key={status}
-                  className="flex items-center gap-2.5 text-xs text-foreground"
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${STATUS_META[status].dot}`}
-                    aria-hidden
-                  />
-                  {STATUS_META[status].badge}
-                </li>
-              ))}
-            </ul>
-          </div>
         </main>
 
         {/* Command console — LISTEN + RESPOND for the focused city. It

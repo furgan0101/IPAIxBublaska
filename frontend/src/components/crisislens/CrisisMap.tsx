@@ -7,6 +7,7 @@ import {
   Marker,
   TileLayer,
   Tooltip,
+  ZoomControl,
   useMap,
   useMapEvents,
 } from "react-leaflet";
@@ -414,8 +415,9 @@ export default function CrisisMap({
       center={BW_CENTER}
       zoom={BW_ZOOM}
       className="h-full w-full"
-      zoomControl
+      zoomControl={false}
     >
+      <ZoomControl position="topright" />
       <TileLayer
         key={theme}
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
