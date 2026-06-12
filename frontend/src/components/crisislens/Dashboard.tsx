@@ -4,11 +4,8 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { Activity, RotateCcw } from "lucide-react";
 
-import {
-  MOCK_REPORTS,
-  STATUS_META,
-  type CrisisReport,
-} from "@/lib/mockReports";
+import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
+import { useLiveReports, type DataMode } from "@/hooks/useLiveReports";
 import { timeAgo } from "@/lib/format";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
@@ -24,7 +21,31 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ),
 });
 
-const ANALYSIS_REFRESH_MS = 30_000;
+const MODE_META: Record<
+  DataMode,
+  { label: string; dot: string; chip: string }
+> = {
+  live: {
+    label: "Live data",
+    dot: "bg-emerald-500",
+    chip: "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  },
+  "backend-demo": {
+    label: "Demo feed",
+    dot: "bg-gold-fill",
+    chip: "border-yellow-600/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+  },
+  "offline-demo": {
+    label: "Demo · offline",
+    dot: "bg-muted-foreground",
+    chip: "border-border bg-muted text-muted-foreground",
+  },
+  connecting: {
+    label: "Connecting…",
+    dot: "bg-muted-foreground",
+    chip: "border-border bg-muted text-muted-foreground",
+  },
+};
 
 interface DashboardProps {
   theme: "dark" | "light";
@@ -34,21 +55,19 @@ interface DashboardProps {
 /** Main command-center view: map, stats, signal feed and report dossier. */
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [lastAnalysis, setLastAnalysis] = useState<Date>(() => new Date());
+  const { reports, mode, aiMode, lastUpdated } = useLiveReports();
 
   const selected = useMemo(
-    () => MOCK_REPORTS.find((r) => r.id === selectedId) ?? null,
-    [selectedId],
+    () => reports.find((r) => r.id === selectedId) ?? null,
+    [reports, selectedId],
   );
 
-  // Mock "pipeline re-run" heartbeat for the top bar.
+  // Drop the selection if the polled data no longer contains it.
   useEffect(() => {
-    const timer = setInterval(
-      () => setLastAnalysis(new Date()),
-      ANALYSIS_REFRESH_MS,
-    );
-    return () => clearInterval(timer);
-  }, []);
+    if (selectedId && !reports.some((r) => r.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [reports, selectedId]);
 
   // Escape resets the view, mirroring the Reset View button.
   useEffect(() => {
@@ -61,28 +80,31 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   const stats = useMemo(() => {
     const count = (s: CrisisReport["status"]): number =>
-      MOCK_REPORTS.filter((r) => r.status === s).length;
-    const avg = Math.round(
-      MOCK_REPORTS.reduce((sum, r) => sum + r.confidence, 0) /
-        MOCK_REPORTS.length,
-    );
+      reports.filter((r) => r.status === s).length;
+    const avg = reports.length
+      ? Math.round(
+          reports.reduce((sum, r) => sum + r.confidence, 0) / reports.length,
+        )
+      : 0;
     return [
-      { label: "Active Reports", value: `${MOCK_REPORTS.length}`, sub: "in current window", accent: "var(--muted-foreground)" },
+      { label: "Active Reports", value: `${reports.length}`, sub: "in current window", accent: "var(--muted-foreground)" },
       { label: "Relevant Crises", value: `${count("relevant")}`, sub: "evidence-based escalation", accent: STATUS_META.relevant.color },
       { label: "Needs Review", value: `${count("review")}`, sub: "human review required", accent: STATUS_META.review.color },
       { label: "Ignored Signals", value: `${count("ignored")}`, sub: "insufficient corroboration", accent: STATUS_META.ignored.color },
       { label: "Avg. Confidence", value: `${avg}%`, sub: "AI-assisted plausibility", accent: "var(--gold-fill)" },
     ];
-  }, []);
+  }, [reports]);
 
   const feed = useMemo(
     () =>
-      [...MOCK_REPORTS].sort(
+      [...reports].sort(
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       ),
-    [],
+    [reports],
   );
+
+  const modeMeta = MODE_META[mode];
 
   return (
     <div className="cl-fade-in flex h-screen flex-col overflow-hidden bg-background">
@@ -107,20 +129,31 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </span>
 
         <div className="ml-auto flex items-center gap-3">
-          <span className="hidden items-center gap-2 rounded-full border border-emerald-600/30 bg-emerald-500/10 px-3 py-1 sm:flex">
+          <span
+            className={`flex items-center gap-2 rounded-full border px-3 py-1 ${modeMeta.chip}`}
+            title={
+              aiMode
+                ? `AI analyst: ${aiMode}`
+                : "Backend status unknown"
+            }
+          >
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+              {mode === "live" && (
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+              )}
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full ${modeMeta.dot}`}
+              />
             </span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:text-emerald-300">
-              Monitoring Live
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+              {modeMeta.label}
             </span>
           </span>
 
           <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
             Last analysis{" "}
             <span className="text-foreground">
-              {lastAnalysis.toLocaleTimeString("de-DE")}
+              {lastUpdated ? lastUpdated.toLocaleTimeString("de-DE") : "—"}
             </span>
           </span>
 
@@ -181,56 +214,63 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
 
           <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
-            <ul className="space-y-2">
-              {feed.map((report) => {
-                const meta = STATUS_META[report.status];
-                const isSelected = report.id === selectedId;
-                return (
-                  <li key={report.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(report.id)}
-                      className={`w-full rounded-lg border p-3.5 text-left transition-colors ${
-                        isSelected
-                          ? "border-gold bg-muted"
-                          : "border-border bg-card hover:bg-muted/60"
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
-                          aria-hidden
-                        />
-                        <span className="truncate text-xs font-semibold text-foreground">
-                          {report.city} · {report.crisisType}
+            {feed.length === 0 ? (
+              <div className="mt-6 px-3 text-center text-xs leading-relaxed text-muted-foreground">
+                No signals in the current window. The pipeline is watching the
+                live feeds.
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {feed.map((report) => {
+                  const meta = STATUS_META[report.status];
+                  const isSelected = report.id === selectedId;
+                  return (
+                    <li key={report.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(report.id)}
+                        className={`w-full rounded-lg border p-3.5 text-left transition-colors ${
+                          isSelected
+                            ? "border-gold bg-muted"
+                            : "border-border bg-card hover:bg-muted/60"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+                            aria-hidden
+                          />
+                          <span className="truncate text-xs font-semibold text-foreground">
+                            {report.city} · {report.crisisType}
+                          </span>
+                          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
+                            {timeAgo(report.timestamp)}
+                          </span>
                         </span>
-                        <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">
-                          {timeAgo(report.timestamp)}
+                        <span className="mt-2 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
+                          “{report.signalSnippet}”
                         </span>
-                      </span>
-                      <span className="mt-2 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
-                        “{report.signalSnippet}”
-                      </span>
-                      <span className="mt-1.5 block truncate text-[10px] text-muted-foreground/70">
-                        {report.signalSource}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
+                        <span className="mt-1.5 block truncate text-[10px] text-muted-foreground/70">
+                          {report.signalSource}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           <p className="border-t border-border px-5 py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-            AI-assisted plausibility estimates on synthetic data. Human review
-            required before escalation.
+            AI-assisted plausibility estimates. Human review required before
+            escalation.
           </p>
         </aside>
 
         {/* Map column */}
         <main className="relative min-w-0 flex-1">
           <CrisisMap
-            reports={MOCK_REPORTS}
+            reports={reports}
             selectedId={selectedId}
             onSelect={setSelectedId}
             theme={theme}
