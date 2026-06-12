@@ -491,50 +491,93 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
 
-          {/* Floating Search Bar */}
-          <div className="pointer-events-none absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2 overflow-hidden px-4 transition-all duration-300">
-            <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2 shadow-lg">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search signals, or type a city and press Enter..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  if (!e.target.value) setManualFocus(null);
-                }}
-                onKeyDown={async (e) => {
-                  if (e.key === "Enter" && searchQuery.trim().length >= 2) {
-                    try {
-                      const res = await fetch(
-                        `http://localhost:8000/api/geocode?q=${encodeURIComponent(searchQuery)}`,
-                      );
-                      const data = await res.json();
-                      if (data.lat && data.lon) {
-                        setManualFocus({
-                          center: [data.lat, data.lon],
-                          zoom: 14,
-                        });
-                      }
-                    } catch (err) {
-                      console.error("Search geocoding failed", err);
-                    }
-                  }
-                }}
-                className="w-64 bg-transparent font-mono text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none lg:w-96"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setManualFocus(null);
-                  }}
-                  title="Clear search"
-                  className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                </button>
+          {/* Map tint overlay — visible only before the user picks a location */}
+          <div
+            className={`pointer-events-none absolute inset-0 z-[999] bg-black transition-opacity duration-500 ${
+              manualFocus || searchQuery ? "opacity-0" : "opacity-50"
+            }`}
+            aria-hidden
+          />
+
+          {/* Floating Search Bar — centred until the user picks a location */}
+          <div
+            className={`pointer-events-none absolute left-1/2 z-[1000] -translate-x-1/2 px-4 transition-all duration-500 ease-in-out ${
+              manualFocus || searchQuery
+                ? "bottom-6 top-auto -translate-y-0"
+                : "top-1/2 -translate-y-1/2"
+            }`}
+          >
+            <div className="pointer-events-auto flex flex-col items-center gap-4">
+              {!manualFocus && !searchQuery && (
+                <div className="mb-2 text-center">
+                  <p className="font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg">
+                    Where do you want to monitor?
+                  </p>
+                  <p className="mt-2 font-mono text-xs uppercase tracking-[0.18em] text-white/60">
+                    Enter a city or region and press Enter
+                  </p>
+                </div>
               )}
+              <div
+                className={`flex items-center gap-3 rounded-2xl border-2 bg-white px-5 shadow-[0_8px_40px_rgba(0,0,0,0.5)] transition-all duration-500 dark:bg-zinc-900 ${
+                  manualFocus || searchQuery
+                    ? "border-border py-2"
+                    : "border-gold/70 py-4 ring-4 ring-gold/20"
+                }`}
+              >
+                <Search
+                  className={`shrink-0 transition-all duration-500 ${
+                    manualFocus || searchQuery
+                      ? "h-4 w-4 text-gold"
+                      : "h-5 w-5 text-gold"
+                  }`}
+                />
+                <input
+                  type="text"
+                  placeholder="e.g. Konstanz, Stuttgart, Freiburg…"
+                  value={searchQuery}
+                  autoFocus={!manualFocus}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (!e.target.value) setManualFocus(null);
+                  }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && searchQuery.trim().length >= 2) {
+                      try {
+                        const res = await fetch(
+                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(searchQuery)}`,
+                        );
+                        const data = await res.json();
+                        if (data.lat && data.lon) {
+                          setManualFocus({
+                            center: [data.lat, data.lon],
+                            zoom: 14,
+                          });
+                        }
+                      } catch (err) {
+                        console.error("Search geocoding failed", err);
+                      }
+                    }
+                  }}
+                  className={`bg-transparent font-mono text-zinc-900 placeholder-zinc-400 focus:outline-none dark:text-white dark:placeholder-zinc-500 ${
+                    manualFocus || searchQuery
+                      ? "w-72 text-sm lg:w-96"
+                      : "w-80 text-base lg:w-[480px]"
+                  }`}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setManualFocus(null);
+                    }}
+                    title="Clear search"
+                    className="rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-white"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           </main>
