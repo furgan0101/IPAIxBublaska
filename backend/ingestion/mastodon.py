@@ -1,0 +1,74 @@
+"""Mastodon connector — public hashtag timelines (keyless social OSINT).
+
+Polls {instance}/api/v1/timelines/tag/{tag} for the configured hashtags.
+This is the channel where citizen reports AND disinformation live, so posts
+are deliberately passed through un-curated (bots included) — judging them is
+exactly the job of the credibility filter downstream.
+"""
+from __future__ import annotations
+
+from typing import Any
+from urllib.parse import quote
+
+import httpx
+
+from ingestion.base import FetchedItem, get_json, html_to_text, parse_utc
+from ingestion.config import IngestionSettings
+
+_LIMIT_PER_TAG: int = 20
+_MIN_TEXT_LEN: int = 15
+_MAX_TEXT_LEN: int = 600
+_ACCEPTED_LANGUAGES: tuple[str | None, ...] = (None, "de", "en")
+
+
+class MastodonConnector:
+    name: str = "mastodon"
+
+    def __init__(self, settings: IngestionSettings) -> None:
+        self._instance = settings.mastodon_instance
+        self._tags = settings.mastodon_tags
+
+    async def fetch(self, client: httpx.AsyncClient) -> list[FetchedItem]:
+        items: list[FetchedItem] = []
+        seen: set[str] = set()
+        for tag in self._tags:
+            statuses = await get_json(
+                client,
+                f"{self._instance}/api/v1/timelines/tag/{quote(tag)}",
+                params={"limit": str(_LIMIT_PER_TAG)},
+            )
+            for status in statuses or []:
+                item = _to_item(status)
+                if item is not None and item.source_id not in seen:
+                    seen.add(item.source_id)
+                    items.append(item)
+        return items
+
+
+def _to_item(status: dict[str, Any]) -> FetchedItem | None:
+    if status.get("reblog"):
+        return None
+    if status.get("language") not in _ACCEPTED_LANGUAGES:
+        return None
+    source_id = str(status.get("uri") or status.get("id") or "")
+    created_at = status.get("created_at")
+    if not source_id or not created_at:
+        return None
+    text = html_to_text(str(status.get("content", "")))
+    if len(text) < _MIN_TEXT_LEN:
+        return None
+    account = status.get("account") or {}
+    media_url: str | None = None
+    for attachment in status.get("media_attachments") or []:
+        if attachment.get("type") == "image":
+            media_url = attachment.get("url") or attachment.get("preview_url")
+            break
+    return FetchedItem(
+        source="mastodon",
+        source_id=source_id,
+        author=f"@{account.get('acct', 'unknown')}",
+        text=text[:_MAX_TEXT_LEN],
+        timestamp=parse_utc(str(created_at)),
+        url=status.get("url") or None,
+        media_url=media_url,
+    )

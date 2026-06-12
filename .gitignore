@@ -11,6 +11,9 @@ __pycache__/
 venv/
 .pytest_cache/
 
+# Live ingestion store (SQLite)
+backend/data/
+
 # Env & secrets
 .env
 .env.*

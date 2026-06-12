@@ -36,6 +36,9 @@ class RawReport(BaseModel):
     exif_lat: float | None = Field(default=None, description="GPS latitude from media EXIF")
     exif_lon: float | None = Field(default=None, description="GPS longitude from media EXIF")
     media_url: str | None = None
+    url: str | None = Field(
+        default=None, description="Link to the original post/release (live feeds)"
+    )
 
 
 class SourceReport(BaseModel):
@@ -47,6 +50,7 @@ class SourceReport(BaseModel):
     author: str
     text: str
     timestamp: datetime
+    url: str | None = None
 
 
 class VerifiedIncident(BaseModel):
@@ -83,6 +87,7 @@ class DebunkedReport(BaseModel):
     timestamp: datetime
     reason_flagged: str
     credibility_score: float = Field(ge=0.0, le=1.0)
+    url: str | None = None
 
 
 class ReportSubmission(BaseModel):

@@ -1,0 +1,71 @@
+[
+ {
+  "id": "mow.DE-BW-KN-SE001-20260612-001",
+  "version": 2,
+  "startDate": "2026-06-12T05:45:00+02:00",
+  "severity": "Severe",
+  "type": "ALERT",
+  "i18nTitle": {"de": "Amtliche WARNUNG vor HOCHWASSER am Bodensee"},
+  "sent": "2026-06-12T05:45:00+02:00",
+  "payload": {
+   "version": 2,
+   "type": "ALERT",
+   "id": "mow.DE-BW-KN-SE001-20260612-001",
+   "hash": "1f4f9f4ab2",
+   "data": {
+    "headline": "Amtliche WARNUNG vor HOCHWASSER am Bodensee",
+    "provider": "MOWAS",
+    "severity": "Severe",
+    "urgency": "Immediate",
+    "msgType": "Alert",
+    "transKeys": {"event": "BBK-EVC-038"}
+   }
+  }
+ },
+ {
+  "id": "kat.DE-BW-KN-SE002-20260612-002",
+  "version": 2,
+  "startDate": "2026-06-12T06:10:00+02:00",
+  "severity": "Minor",
+  "type": "CANCEL",
+  "i18nTitle": {"de": "Entwarnung: Stromausfall Radolfzell behoben"},
+  "sent": "2026-06-12T06:10:00+02:00",
+  "payload": {
+   "version": 2,
+   "type": "CANCEL",
+   "id": "kat.DE-BW-KN-SE002-20260612-002",
+   "hash": "9c2d1e77aa",
+   "data": {
+    "headline": "Entwarnung: Stromausfall Radolfzell behoben",
+    "provider": "KATWARN",
+    "severity": "Minor",
+    "urgency": "Immediate",
+    "msgType": "Cancel",
+    "transKeys": {"event": "BBK-EVC-040"}
+   }
+  }
+ },
+ {
+  "id": "dwd.SE003.20260612.01",
+  "version": 2,
+  "startDate": "2026-06-12T07:00:00+02:00",
+  "severity": "Moderate",
+  "type": "ALERT",
+  "i18nTitle": {"de": "Amtliche WARNUNG vor SCHWEREN GEWITTERN"},
+  "sent": "2026-06-12T07:00:00+02:00",
+  "payload": {
+   "version": 2,
+   "type": "ALERT",
+   "id": "dwd.SE003.20260612.01",
+   "hash": "77ab01c3de",
+   "data": {
+    "headline": "Amtliche WARNUNG vor SCHWEREN GEWITTERN",
+    "provider": "DWD",
+    "severity": "Moderate",
+    "urgency": "Immediate",
+    "msgType": "Alert",
+    "transKeys": {"event": "BBK-EVW-061"}
+   }
+  }
+ }
+]
