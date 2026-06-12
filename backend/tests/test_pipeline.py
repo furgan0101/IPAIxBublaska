@@ -51,7 +51,7 @@ def make_report(**overrides: object) -> RawReport:
 
 def test_mock_data_matches_raw_report_schema() -> None:
     reports = load_raw_reports()
-    assert len(reports) == 60
+    assert len(reports) == 12
 
 
 def test_recycled_footage_is_flagged() -> None:
@@ -102,13 +102,14 @@ def test_reports_outside_radius_stay_separate() -> None:
 
 def test_full_pipeline_on_mock_data() -> None:
     result = run_pipeline(load_raw_reports())
-    # The 60-report demo dataset: 25 credible posts clustering into incidents,
-    # 35 disinformation posts caught by the heuristics (bot-spam markers,
-    # recycled-footage EXIF gaps, geotag conflicts).
-    assert len(result["debunked"]) == 35
-    assert sum(i.report_count for i in result["incidents"]) == 25
-    types = {i.event_type for i in result["incidents"]}
-    assert {"flood", "fire", "storm", "power_outage"} <= types
+    assert len(result["debunked"]) == 4
+    assert sum(i.report_count for i in result["incidents"]) == 8
+    assert {i.event_type for i in result["incidents"]} == {
+        "flood",
+        "fire",
+        "storm",
+        "power_outage",
+    }
 
 
 # --- Responder guidance (severity + action hints) ---------------------------------
@@ -152,10 +153,9 @@ def test_incidents_carry_guidance_and_sources() -> None:
 
 def test_single_source_incident_gets_low_corroboration_hint() -> None:
     result = run_pipeline(load_raw_reports())
-    singles = [i for i in result["incidents"] if i.report_count == 1]
-    assert singles, "demo dataset should contain single-source incidents"
-    for incident in singles:
-        assert incident.action_hint.startswith("Low corroboration")
+    outage = next(i for i in result["incidents"] if i.event_type == "power_outage")
+    assert outage.report_count == 1
+    assert outage.action_hint.startswith("Low corroboration")
 
 
 # --- Live injection (POST /api/reports) ------------------------------------------

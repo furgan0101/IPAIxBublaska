@@ -285,9 +285,9 @@ body {
   background: transparent;
 }
 
-/* -------------------------------------------------------- city focus */
+/* ------------------------------------------------------- command mode */
 
-/* Black/gold civil-protection caution stripe — the city-focus signature
+/* Black/gold civil-protection caution stripe — Command Mode's signature
    rule. A flat two-colour pattern, in keeping with the no-gradients rule. */
 .cl-hazard {
   background: repeating-linear-gradient(-45deg,
@@ -297,7 +297,7 @@ body {
       var(--gold-fill) 20px);
 }
 
-/* Measures layer — operational pins placed while focusing a city. */
+/* Measures Layer — operational pins the official places in Command Mode. */
 .cl-measure-wrap {
   background: transparent;
   border: none;

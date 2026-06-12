@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Measures-layer data module — the editable planning layer of city focus.
+ * Measures Layer data module — the editable tactical layer of Command Mode.
  *
  * Operational markers (units, shelters, closures, zones …) an official
  * places on the map to plan the response. Client-side only: state lives in

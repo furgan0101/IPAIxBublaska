@@ -12,7 +12,7 @@ interface MeasurePaletteProps {
 }
 
 /**
- * Floating symbol palette on the map (city focus only). Arm a tool, then
+ * Floating symbol palette on the map (Command Mode only). Arm a tool, then
  * click the map — or press Enter — to drop the marker. Clicking the armed
  * tool again (or Escape) disarms it.
  */

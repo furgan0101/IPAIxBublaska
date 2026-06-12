@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, MapPin } from "lucide-react";
+import { ChevronDown, Crosshair } from "lucide-react";
 
 import { STATUS_META, type CrisisReport, type ReportStatus } from "@/lib/mockReports";
 
@@ -25,8 +25,8 @@ interface CityFocusPickerProps {
 }
 
 /**
- * Header dropdown that focuses the dashboard on one city. Cities are derived
- * from whatever is on the board, so it works on demo and live data alike.
+ * Header dropdown that enters Command Mode for one city. Cities are derived
+ * from whatever is on the board, so it works on mock and live data alike.
  */
 export default function CityFocusPicker({ reports, onFocus }: CityFocusPickerProps) {
   const [open, setOpen] = useState(false);
@@ -85,8 +85,8 @@ export default function CityFocusPicker({ reports, onFocus }: CityFocusPickerPro
         aria-expanded={open}
         className="flex items-center gap-2 rounded-md border border-gold/40 bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <MapPin className="h-3.5 w-3.5 text-gold" />
-        Focus city
+        <Crosshair className="h-3.5 w-3.5 text-gold" />
+        Command Mode
         <ChevronDown
           className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`}
         />
@@ -99,7 +99,7 @@ export default function CityFocusPicker({ reports, onFocus }: CityFocusPickerPro
           className="cl-rise absolute right-0 top-full z-[1100] mt-2 w-72 overflow-hidden rounded-lg border border-border bg-popover shadow-xl"
         >
           <p className="border-b border-border px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Focus the dashboard on one city
+            Focus a city · scoped command view
           </p>
           <ul className="cl-scroll max-h-80 overflow-y-auto p-1.5">
             {cities.map((entry) => (
@@ -126,7 +126,7 @@ export default function CityFocusPicker({ reports, onFocus }: CityFocusPickerPro
                     </span>
                   )}
                   <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-                    {entry.count} report{entry.count === 1 ? "" : "s"}
+                    {entry.count} rpt
                   </span>
                 </button>
               </li>

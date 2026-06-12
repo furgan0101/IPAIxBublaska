@@ -49,26 +49,12 @@ def _mean_ai_credibility(cluster: list[RawReport]) -> float | None:
     return round(fmean(scores), 2) if scores else None
 
 
-#: Display names for source channels (used in incident summaries).
-_SOURCE_LABELS: dict[str, str] = {
-    "nina": "NINA",
-    "presseportal": "Presseportal",
-    "feuerwehr": "Feuerwehr",
-    "mastodon": "Mastodon",
-    "bluesky": "Bluesky",
-    "twitter": "Twitter",
-    "telegram": "Telegram",
-    "live": "manual report",
-}
-
-
 def _summarise(cluster: list[RawReport]) -> str:
-    names = sorted(
-        {_SOURCE_LABELS.get(r.source, r.source.capitalize()) for r in cluster}
+    sources = sorted({r.source for r in cluster})
+    return (
+        f"{cluster[0].event_type.capitalize()} corroborated by "
+        f"{len(cluster)} report(s) via {', '.join(sources)}"
     )
-    count = len(cluster)
-    noun = "report" if count == 1 else "reports"
-    return f"Corroborated by {count} independent {noun} ({', '.join(names)})"
 
 
 def cluster_reports(

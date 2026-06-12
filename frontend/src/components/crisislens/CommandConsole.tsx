@@ -66,8 +66,8 @@ interface CommandConsoleProps {
 }
 
 /**
- * Right-hand city console: Pulse (listen) · Plan (measures on the map) ·
- * Respond (manage the media response). All panels stay mounted across
+ * Right-hand Command Mode console: PULSE (listen) · PLAN (measures on the
+ * map) · RESPOND (manage the media response). All panels stay mounted across
  * tab switches so composer state and the response timeline survive.
  */
 export default function CommandConsole({

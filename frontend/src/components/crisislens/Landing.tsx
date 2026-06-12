@@ -23,7 +23,7 @@ const PIPELINE_TABS = [
       badge: "Stage 01 · Ingest",
       title: "Open sources, one picture.",
       description:
-        "CrisisLens collects public crisis signals — social posts, local news, weather alerts and citizen reports — and normalises them into a single time-stamped feed for Baden-Württemberg.",
+        "CrisisLens collects public crisis signals — social posts, local news, weather alerts and citizen reports — and normalises them into a single time-stamped feed.",
       buttonText: "Begin Analysis",
       imageSrc:
         "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",

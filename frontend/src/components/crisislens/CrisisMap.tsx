@@ -27,7 +27,7 @@ import {
   type PlacedMeasure,
 } from "@/lib/measures";
 
-/** Overview framing for Baden-Württemberg. */
+/** Overview framing for the Baden-Württemberg sector. */
 const BW_CENTER: [number, number] = [48.62, 9.05];
 const BW_ZOOM = 8;
 const FOCUS_ZOOM = 9;
@@ -35,7 +35,7 @@ const FOCUS_ZOOM = 9;
 /** Wait for the detail-panel width transition (500 ms) before flying. */
 const FLY_DELAY_MS = 560;
 
-/** City-focus target — the map flies to and holds the focused city. */
+/** Command Mode focus target — the map flies to the city in command. */
 export interface MapFocus {
   center: [number, number];
   zoom: number;
@@ -374,9 +374,9 @@ interface CrisisMapProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   theme: "dark" | "light";
-  /** City focus: fly to and hold the focused city. */
+  /** Command Mode: fly to and hold the focused city. */
   focus?: MapFocus | null;
-  /** Measures layer (city-focus planning) — all optional. */
+  /** Measures Layer (Command Mode planning) — all optional. */
   measures?: PlacedMeasure[];
   armedTool?: MeasureKind | null;
   selectedMeasureId?: string | null;
