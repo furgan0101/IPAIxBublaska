@@ -1,0 +1,22 @@
+# Node
+node_modules/
+frontend/.next/
+frontend/out/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+backend/.env
+
+# Misc
+.DS_Store
+*.log
