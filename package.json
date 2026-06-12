@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "setup": "cd backend && pip install -r requirements.txt && cd ../frontend && npm install",
+    "setup": "test -x backend/.venv/bin/python || python3.12 -m venv backend/.venv && backend/.venv/bin/python -m pip install -r backend/requirements.txt && cd frontend && npm install",
     "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev:api\" \"npm run dev:web\"",
-    "dev:api": "cd backend && python -m uvicorn main:app --reload --port 8000",
+    "dev:api": "cd backend && .venv/bin/python -m uvicorn main:app --reload --port 8000",
     "dev:web": "cd frontend && npm run dev",
-    "test:api": "cd backend && python -m pytest -q"
+    "test:api": "cd backend && .venv/bin/python -m pytest -q"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

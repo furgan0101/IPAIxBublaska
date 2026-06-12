@@ -172,3 +172,5 @@ export function adaptAll(
 ): CrisisReport[] {
   return [...incidents.map(adaptIncident), ...debunked.map(adaptDebunked)];
 }
+
+export const toReports = adaptAll;
