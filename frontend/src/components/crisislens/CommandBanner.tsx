@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Crosshair, LogOut, ShieldAlert } from "lucide-react";
+import { LogOut, MapPin, ShieldAlert } from "lucide-react";
 
 import type { RiskLevel } from "@/lib/mockReports";
 import { safeNewDate } from "@/lib/format";
@@ -13,14 +13,14 @@ const RISK_CHIP: Record<RiskLevel, string> = {
   Low: "border-border bg-muted text-muted-foreground",
 };
 
-/** Format an elapsed duration as T+ HH:MM:SS. */
+/** Format an elapsed duration as HH:MM:SS. */
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
   const pad = (n: number): string => String(n).padStart(2, "0");
-  return `T+ ${pad(h)}:${pad(m)}:${pad(s)}`;
+  return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
 interface CommandBannerProps {
@@ -33,7 +33,7 @@ interface CommandBannerProps {
 }
 
 /**
- * Command Mode header strip: gold/black civil-protection identity, the city
+ * City-focus header strip: gold/black civil-protection identity, the city
  * in focus, a live event clock since the first signal, and the exit control.
  */
 export default function CommandBanner({
@@ -57,9 +57,9 @@ export default function CommandBanner({
       <div className="flex h-12 items-stretch">
         {/* Gold identity block — the one loud element in the app. */}
         <div className="flex items-center gap-2 bg-gold-fill px-4 text-black">
-          <Crosshair className="h-4 w-4" aria-hidden />
+          <MapPin className="h-4 w-4" aria-hidden />
           <span className="text-[11px] font-bold uppercase tracking-[0.18em]">
-            Command Mode
+            City Focus
           </span>
         </div>
 
@@ -75,7 +75,7 @@ export default function CommandBanner({
               className="font-mono text-sm font-semibold tabular-nums text-foreground"
               title="Time since the first signal of this event"
             >
-              {zero ? formatElapsed(now - zero) : "T+ —"}
+              {zero ? formatElapsed(now - zero) : "—"}
             </span>
             <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
               since first signal
@@ -112,7 +112,7 @@ export default function CommandBanner({
             className="ml-auto flex shrink-0 items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <LogOut className="h-3.5 w-3.5" aria-hidden />
-            Exit Command Mode
+            Exit focus
             <kbd className="hidden rounded border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground lg:inline">
               Esc
             </kbd>
@@ -120,7 +120,7 @@ export default function CommandBanner({
         </div>
       </div>
 
-      {/* Civil-protection caution stripe — Command Mode's signature rule. */}
+      {/* Civil-protection caution stripe — the city-focus signature rule. */}
       <div className="cl-hazard h-[3px]" aria-hidden />
     </div>
   );

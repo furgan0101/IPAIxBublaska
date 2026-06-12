@@ -60,7 +60,7 @@ _HINTS: dict[str, str] = {
     # Natural hazards
     "flood": (
         "Close affected waterfront paths, deploy pumping crews and monitor "
-        "the lake level gauge."
+        "river and lake levels."
     ),
     "storm": (
         "Warn of falling trees and debris; prioritise road-clearance crews "
@@ -88,8 +88,8 @@ _HINTS: dict[str, str] = {
         "pedestrian traffic."
     ),
     "explosion": (
-        "Stage EOD assessment before entry, triage casualties and secure the "
-        "perimeter against secondary incidents."
+        "Hold entry until explosive-ordnance specialists have assessed the "
+        "site; triage casualties and secure the perimeter."
     ),
     "chemical_accident": (
         "Establish an exclusion zone upwind, alert hazmat units and advise "
@@ -131,12 +131,12 @@ _HINTS: dict[str, str] = {
     ),
     # Terrorism / security
     "terror_attack": (
-        "Police lead — support with the situational picture only; do NOT "
-        "publish tactical details or force positions."
+        "Police-led operation — share verified situational information only; "
+        "do not publish operational details or unit locations."
     ),
     "cbrn_attack": (
-        "Maximum protective posture: specialist CBRN units lead, wide cordon, "
-        "strict information discipline."
+        "Specialist CBRN units lead; maintain a wide safety perimeter and "
+        "strict control of public information."
     ),
     "hostage": (
         "Information blackout on police tactics; route all public "
@@ -174,8 +174,8 @@ _HINTS: dict[str, str] = {
     ),
 }
 _DEFAULT_HINT: str = (
-    "Dispatch reconnaissance to verify conditions on the ground and update "
-    "the sector log."
+    "Arrange an on-site status check to verify conditions and record the "
+    "findings in the operations log."
 )
 
 #: Canonical event taxonomy (BW Ministry of the Interior crisis catalogue).
@@ -194,7 +194,7 @@ def action_hint(event_type: str, report_count: int, confidence: float) -> str:
     base = _HINTS.get(event_type, _DEFAULT_HINT)
     if report_count < 2 or confidence < LOW_CORROBORATION_CONFIDENCE:
         return (
-            "Low corroboration — task recon for ground truth first. "
+            "Low corroboration — request on-site confirmation first. "
             f"If confirmed: {base[0].lower() + base[1:]}"
         )
     return base
