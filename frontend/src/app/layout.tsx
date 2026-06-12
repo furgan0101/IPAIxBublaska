@@ -29,15 +29,22 @@ export const metadata: Metadata = {
     "AI-assisted crisis signal triage for civil protection teams. Mock crisis dataset · Baden-Württemberg · human-in-the-loop review.",
 };
 
+/** Applies the persisted theme before first paint to avoid a flash. */
+const THEME_INIT = `try{var t=localStorage.getItem("crisislens-theme");document.documentElement.classList.toggle("dark",t!=="light")}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${barlow.variable} ${plexSans.variable} ${plexMono.variable}`}
     >
-      <body className="bg-night-950 font-sans text-slate-100 antialiased">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT }} />
+      </head>
+      <body className="bg-background font-sans text-foreground antialiased">
         {children}
       </body>
     </html>
