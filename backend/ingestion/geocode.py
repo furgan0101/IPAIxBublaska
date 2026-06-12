@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 import time
 from datetime import datetime, timezone
@@ -29,8 +30,17 @@ logger = logging.getLogger("vost.ingestion.geocode")
 NOMINATIM_URL: str = "https://nominatim.openstreetmap.org/search"
 MIN_REQUEST_GAP_S: float = 1.1
 
-# Bounding box around the demo sector (lon_left, lat_top, lon_right, lat_bottom).
-SECTOR_VIEWBOX: str = "8.40,48.35,9.95,47.25"
+
+def _sector_viewbox(lat: float, lon: float, radius_km: float) -> str:
+    """Bounding box around the configured sector, padded ~15 % beyond the
+    radius so edge towns still resolve. Format: lon_left,lat_top,lon_right,
+    lat_bottom (Nominatim's expected order). Scales with SECTOR_RADIUS_KM, so
+    widening the sector (e.g. to all of Baden-Württemberg) widens geocoding."""
+    pad_km = radius_km * 1.15
+    d_lat = pad_km / 111.0
+    d_lon = pad_km / max(1.0, 111.0 * math.cos(math.radians(lat)))
+    return f"{lon - d_lon:.4f},{lat + d_lat:.4f},{lon + d_lon:.4f},{lat - d_lat:.4f}"
+
 
 # Tokens that are roads/qualifiers, not geocodable place names.
 _NOISE_RE: re.Pattern[str] = re.compile(
@@ -66,6 +76,9 @@ class Geocoder:
         self._store = store
         self._lock = asyncio.Lock()
         self._last_request: float = 0.0
+        self._viewbox = _sector_viewbox(
+            settings.sector_lat, settings.sector_lon, settings.sector_radius_km
+        )
 
     async def resolve(
         self,
@@ -116,7 +129,7 @@ class Geocoder:
                         "format": "jsonv2",
                         "limit": "1",
                         "countrycodes": "de,ch",
-                        "viewbox": SECTOR_VIEWBOX,
+                        "viewbox": self._viewbox,
                         "bounded": "1",  # local match or nothing
                     },
                 )
