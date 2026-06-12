@@ -521,10 +521,11 @@ def analyze_with_llm(report: RawReport) -> Assessment:
         return Assessment(False, "AI Parsing Error", 0.0)
 
     # Pretty-print the structured verdict, with the 0-100% trust score made explicit.
+    trustworthiness_level = max(1, min(5, round(analysis.credibility_score * 5)))
     verdict = {
         "report_id": report.id,
         "author": report.author,
-        "trustworthiness_pct": round(analysis.credibility_score * 100),
+        "trustworthiness_level": trustworthiness_level,
         "is_credible": analysis.is_credible,
         "event_type": analysis.event_type,
         "credibility_score": analysis.credibility_score,

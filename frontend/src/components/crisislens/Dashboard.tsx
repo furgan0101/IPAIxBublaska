@@ -15,6 +15,7 @@ import { timeAgo } from "@/lib/format";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
+import TagFilter from "./TagFilter";
 
 // Leaflet touches `window` — load the map strictly client-side.
 const CrisisMap = dynamic(() => import("./CrisisMap"), {
@@ -61,6 +62,7 @@ interface DashboardProps {
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, health, online } = useDashboard();
@@ -73,13 +75,31 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   // Real pipeline output in live mode; the curated mock set otherwise — the
   // dashboard always has something meaningful to show (offline judging!).
-  const reports: CrisisReport[] = useMemo(
+  const allReports: CrisisReport[] = useMemo(
     () =>
       mode === "live"
         ? adaptAll(incidents ?? [], debunked ?? [])
         : MOCK_REPORTS,
     [mode, incidents, debunked],
   );
+
+  const reports = useMemo(
+    () =>
+      activeTag
+        ? allReports.filter((r) => r.crisisType === activeTag)
+        : allReports,
+    [allReports, activeTag],
+  );
+
+  const tagCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    allReports.forEach((r) => {
+      counts[r.crisisType] = (counts[r.crisisType] ?? 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [allReports]);
 
   const selected = useMemo(
     () => reports.find((r) => r.id === selectedId) ?? null,
@@ -100,23 +120,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const stats = useMemo(() => {
-    const count = (s: CrisisReport["status"]): number =>
-      reports.filter((r) => r.status === s).length;
-    const avg =
-      reports.length > 0
-        ? Math.round(
-            reports.reduce((sum, r) => sum + r.confidence, 0) / reports.length,
-          )
-        : 0;
-    return [
-      { label: "Active Reports", value: `${reports.length}`, sub: "in current window", accent: "var(--muted-foreground)" },
-      { label: "Relevant Crises", value: `${count("relevant")}`, sub: "evidence-based escalation", accent: STATUS_META.relevant.color },
-      { label: "Needs Review", value: `${count("review")}`, sub: "human review required", accent: STATUS_META.review.color },
-      { label: "Ignored Signals", value: `${count("ignored")}`, sub: "insufficient corroboration", accent: STATUS_META.ignored.color },
-      { label: "Avg. Confidence", value: `${avg}%`, sub: "AI-assisted plausibility", accent: "var(--gold-fill)" },
-    ];
-  }, [reports]);
 
   const feed = useMemo(
     () =>
@@ -200,39 +203,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
       </header>
 
-      {/* --------------------------------------------------- stats strip */}
-      {/* Collapses when a node is selected → focused map | dossier split. */}
-      <div
-        className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
-        style={{ maxHeight: selected ? 0 : 200, opacity: selected ? 0 : 1 }}
-        aria-hidden={Boolean(selected)}
-      >
-        <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex items-center gap-4 bg-background px-6 py-4"
-          >
-            <span
-              className="h-10 w-1 shrink-0 rounded-full"
-              style={{ background: stat.accent }}
-              aria-hidden
-            />
-            <div className="min-w-0">
-              <p className="truncate text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                {stat.label}
-              </p>
-              <p className="font-display text-3xl font-semibold leading-8 tabular-nums">
-                {stat.value}
-              </p>
-              <p className="truncate text-[11px] text-muted-foreground/70">
-                {stat.sub}
-              </p>
-            </div>
-          </div>
-        ))}
-        </div>
-      </div>
 
       {/* ----------------------------------------------------- main row */}
       <div className="flex min-h-0 flex-1">
@@ -317,6 +287,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             selectedId={selectedId}
             onSelect={setSelectedId}
             theme={theme}
+          />
+
+          {/* Tag filter */}
+          <TagFilter
+            tags={tagCounts}
+            active={activeTag}
+            onChange={setActiveTag}
           />
 
           {/* Triage legend */}
