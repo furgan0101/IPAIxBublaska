@@ -173,7 +173,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       </header>
 
       {/* --------------------------------------------------- stats strip */}
-      <div className="grid shrink-0 grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
+      {/* Collapses when a node is selected → focused map | dossier split. */}
+      <div
+        className="shrink-0 overflow-hidden transition-all duration-500 ease-in-out"
+        style={{ maxHeight: selected ? 0 : 200, opacity: selected ? 0 : 1 }}
+        aria-hidden={Boolean(selected)}
+      >
+        <div className="grid grid-cols-2 gap-px border-b border-border bg-border sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((stat) => (
           <div
             key={stat.label}
@@ -197,12 +203,18 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             </div>
           </div>
         ))}
+        </div>
       </div>
 
       {/* ----------------------------------------------------- main row */}
       <div className="flex min-h-0 flex-1">
-        {/* Latest signals rail */}
-        <aside className="hidden w-[300px] shrink-0 flex-col border-r border-border bg-background lg:flex">
+        {/* Latest signals rail — collapses away when a node is selected. */}
+        <aside
+          className="hidden shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out lg:block"
+          style={{ width: selected ? 0 : 300 }}
+          aria-hidden={Boolean(selected)}
+        >
+          <div className="flex h-full w-[300px] flex-col border-r border-border bg-background">
           <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
             <Activity className="h-4 w-4 text-gold" />
             <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
@@ -265,6 +277,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             AI-assisted plausibility estimates. Human review required before
             escalation.
           </p>
+          </div>
         </aside>
 
         {/* Map column */}
