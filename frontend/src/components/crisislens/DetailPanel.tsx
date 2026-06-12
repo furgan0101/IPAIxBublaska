@@ -180,7 +180,6 @@ function PanelContent({
               color={meta.color}
               breakdown={[
                 { label: "Source reliability", value: report.breakdown.sourceReliability },
-                { label: "Location match", value: report.breakdown.locationMatch },
                 { label: "Media support", value: report.breakdown.mediaSupport },
                 { label: "Cross-source confirm.", value: report.breakdown.crossSourceConfirmation },
               ]}
