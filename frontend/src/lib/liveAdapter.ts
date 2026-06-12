@@ -22,11 +22,12 @@ const SOURCE_TYPE: Record<string, SourceType> = {
   twitter: "Social Media",
   telegram: "Social Media",
   presseportal: "Local News",
+  feuerwehr: "Local News",
   nina: "Weather Alert",
 };
 
-/** Authority-verified channels (federal warnings, police newsroom). */
-const OFFICIAL_SOURCES = new Set(["nina", "presseportal"]);
+/** Authority-verified channels (federal warnings, police + fire newsrooms). */
+const OFFICIAL_SOURCES = new Set(["nina", "presseportal", "feuerwehr"]);
 
 const RISK_BY_SEVERITY: Record<string, RiskLevel> = {
   high: "High",

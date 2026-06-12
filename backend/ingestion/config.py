@@ -83,6 +83,28 @@ BW_PRESSEPORTAL_FEEDS: tuple[str, ...] = tuple(
     for nr in _BW_POLICE_DIENSTSTELLEN
 )
 
+# BW fire & rescue newsrooms (Presseportal) — the legal analogue to live
+# operational chatter: brigades publish during/right after deployments
+# (fires, floods, technical rescue, hazmat). No statewide dispatch API exists,
+# so this is the closest lawful, keyless "Einsatz" signal. Opt in: FIRE_FEEDS=bw.
+_BW_FIRE_DIENSTSTELLEN: tuple[str, ...] = (
+    "161590",  # Feuerwehr Stuttgart (Berufsfeuerwehr)
+    "164917",  # Feuerwehr Böblingen
+    "179375",  # Feuerwehr Weinheim
+    "182024",  # Feuerwehr Weil am Rhein
+    "169982",  # Feuerwehr Radolfzell
+    "139089",  # Feuerwehr Konstanz
+    "175384",  # Feuerwehr Allensbach
+    "163367",  # Freiwillige Feuerwehr Reichenau
+    "182292",  # Freiwillige Feuerwehr Überlingen
+    "130685",  # Kreisfeuerwehrverband Landkreis Karlsruhe
+    "116896",  # Kreisfeuerwehrverband Calw
+)
+BW_FIRE_FEEDS: tuple[str, ...] = tuple(
+    f"https://www.presseportal.de/rss/dienststelle_{nr}.rss2"
+    for nr in _BW_FIRE_DIENSTSTELLEN
+)
+
 
 def _flag(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
@@ -134,6 +156,8 @@ class IngestionSettings:
     nominatim_enabled: bool
     request_timeout_s: float
     user_agent: str
+    # Fire & rescue RSS newsrooms — opt-in (default off keeps the demo lean).
+    fire_feeds: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "IngestionSettings":
@@ -167,4 +191,5 @@ class IngestionSettings:
                 "FEEDS_USER_AGENT",
                 "VOSTbw-OSINT-Dashboard/0.3 (hackathon demo; situational awareness)",
             ),
+            fire_feeds=_expand(_csv("FIRE_FEEDS", ()), {"bw": BW_FIRE_FEEDS}),
         )
