@@ -26,6 +26,7 @@ import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
 import TagFilter from "./TagFilter";
+import FilterToolbar from "./FilterToolbar";
 import CityFocusPicker from "./CityFocusPicker";
 import CommandBanner from "./CommandBanner";
 import CommandConsole from "./CommandConsole";
@@ -37,7 +38,7 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-background font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-      Loading Baden-Württemberg sector map…
+      Loading map…
     </div>
   ),
 });
@@ -79,6 +80,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [focusCity, setFocusCity] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [minConfidence, setMinConfidence] = useState(0);
   const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
@@ -101,11 +103,17 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   );
 
   const reports = useMemo(
-    () =>
-      activeTag
-        ? allReports.filter((r) => r.crisisType === activeTag)
-        : allReports,
-    [allReports, activeTag],
+    () => {
+      let filtered = allReports;
+      if (activeTag) {
+        filtered = filtered.filter((r) => r.crisisType === activeTag);
+      }
+      if (minConfidence > 0) {
+        filtered = filtered.filter((r) => r.confidence >= minConfidence);
+      }
+      return filtered;
+    },
+    [allReports, activeTag, minConfidence],
   );
 
   const tagCounts = useMemo(() => {
@@ -290,48 +298,10 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </span>
         </div>
 
-        <span className="hidden h-5 w-px bg-border md:block" aria-hidden />
-        <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground md:block">
-          Baden-Württemberg sector
-        </span>
-
         <div className="ml-auto flex items-center gap-3">
           {!focusCity && (
             <CityFocusPicker reports={reports} onFocus={enterCommandMode} />
           )}
-
-          <span
-            className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
-            title="Data source: live backend pipeline vs. bundled demo dataset"
-          >
-            <span className="relative flex h-2 w-2">
-              {modeMeta.ping && (
-                <span
-                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${modeMeta.dot}`}
-                />
-              )}
-              <span
-                className={`relative inline-flex h-2 w-2 rounded-full ${modeMeta.dot}`}
-              />
-            </span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">
-              {modeMeta.label}
-            </span>
-          </span>
-
-          <span
-            className="hidden rounded-full border border-border bg-muted px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground md:block"
-            title="LLM analyst mode (LiteLLM gateway, Qwen3-VL)"
-          >
-            AI {health?.ai_mode ?? "mock"}
-          </span>
-
-          <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
-            Last analysis{" "}
-            <span className="text-foreground" suppressHydrationWarning>
-              {lastAnalysis ? lastAnalysis.toLocaleTimeString("de-DE") : "—"}
-            </span>
-          </span>
 
           {selected && (
             <button
@@ -355,6 +325,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </header>
+
+      <FilterToolbar
+        tagCounts={tagCounts}
+        activeTag={activeTag}
+        setActiveTag={setActiveTag}
+        minConfidence={minConfidence}
+        setMinConfidence={setMinConfidence}
+      />
 
       {/* -------------------------------------------- command mode banner */}
       {focusCity && (
@@ -438,11 +416,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             )}
           </div>
 
-          <p className="border-t border-border px-5 py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-            {mode === "live"
-              ? "AI-assisted plausibility on live open feeds (NINA · police RSS · Mastodon). Human review required before escalation."
-              : "AI-assisted plausibility estimates on synthetic data. Human review required before escalation."}
-          </p>
           </div>
         </aside>
 
@@ -477,13 +450,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onHoverMeasure={setHoveredMeasureId}
             onMoveMeasure={(id, position) => updateMeasure(id, { position })}
             onResizeZone={(id, radiusM) => updateMeasure(id, { radiusM })}
-          />
-
-          {/* Tag filter */}
-          <TagFilter
-            tags={tagCounts}
-            active={activeTag}
-            onChange={setActiveTag}
           />
 
           {/* Measure palette — the editable tactical layer (Command Mode). */}

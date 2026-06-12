@@ -142,7 +142,7 @@ function PanelContent({
         <div className="mt-4 space-y-2 text-xs text-muted-foreground">
           <p className="flex items-center gap-2">
             <MapPin className="h-3.5 w-3.5 shrink-0" />
-            {report.city}, Baden-Württemberg
+            {report.city}
             <span className="ml-auto font-mono text-[11px]">
               {report.coordinates[0].toFixed(4)} N ·{" "}
               {report.coordinates[1].toFixed(4)} E
