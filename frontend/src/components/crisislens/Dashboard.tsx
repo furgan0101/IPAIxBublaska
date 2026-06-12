@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
-import { Activity, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, Rss, RotateCcw } from "lucide-react";
 
 import {
   MOCK_REPORTS,
@@ -12,9 +12,11 @@ import {
 import { adaptAll } from "@/lib/liveAdapter";
 import { useDashboard } from "@/hooks/useDashboard";
 import { timeAgo } from "@/lib/format";
+import type { StreamPost } from "@/lib/types";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
+import ScopePicker from "./ScopePicker";
 
 // Leaflet touches `window` — load the map strictly client-side.
 const CrisisMap = dynamic(() => import("./CrisisMap"), {
@@ -52,6 +54,28 @@ const MODE_META: Record<
   },
 };
 
+function VerdictChip({ verdict }: { verdict: StreamPost["verdict"] }) {
+  if (verdict === "verified") {
+    return (
+      <span className="shrink-0 rounded border border-emerald-600/30 bg-emerald-500/10 px-1 py-px text-[8px] font-bold tracking-wider text-emerald-700 dark:text-emerald-300">
+        VERIFIED
+      </span>
+    );
+  }
+  if (verdict === "debunked") {
+    return (
+      <span className="shrink-0 rounded border border-red-600/30 bg-red-500/10 px-1 py-px text-[8px] font-bold tracking-wider text-red-700 dark:text-red-300">
+        DEBUNKED
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 animate-pulse rounded border border-border bg-muted px-1 py-px text-[8px] font-bold tracking-wider text-muted-foreground">
+      ANALYZING
+    </span>
+  );
+}
+
 interface DashboardProps {
   theme: "dark" | "light";
   onToggleTheme: () => void;
@@ -63,7 +87,25 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
-  const { incidents, debunked, health, online } = useDashboard();
+  const {
+    incidents,
+    debunked,
+    health,
+    scopes,
+    scopeGroups,
+    activeScope,
+    scopePending,
+    scopeError,
+    streamPosts,
+    online,
+    changeScope,
+  } = useDashboard();
+  const streaming = health?.feeds?.streaming;
+  // Flash only posts that are NEW since the previous render cycle.
+  const seenPostIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const post of streamPosts ?? []) seenPostIds.current.add(post.id);
+  }, [streamPosts]);
 
   const mode: DataMode = !online
     ? "offline"
@@ -73,13 +115,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   // Real pipeline output in live mode; the curated mock set otherwise — the
   // dashboard always has something meaningful to show (offline judging!).
-  const reports: CrisisReport[] = useMemo(
-    () =>
-      mode === "live"
-        ? adaptAll(incidents ?? [], debunked ?? [])
-        : MOCK_REPORTS,
-    [mode, incidents, debunked],
-  );
+  const reports: CrisisReport[] = useMemo(() => {
+    if (mode === "live") return adaptAll(incidents ?? [], debunked ?? []);
+    if (activeScope === null || activeScope.id === "konstanz-sector") {
+      return MOCK_REPORTS;
+    }
+    return [];
+  }, [mode, incidents, debunked, activeScope]);
 
   const selected = useMemo(
     () => reports.find((r) => r.id === selectedId) ?? null,
@@ -99,6 +141,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  const handleScopeSelect = useCallback(
+    async (id: string): Promise<void> => {
+      setSelectedId(null);
+      await changeScope(id);
+    },
+    [changeScope],
+  );
 
   const stats = useMemo(() => {
     const count = (s: CrisisReport["status"]): number =>
@@ -148,10 +198,19 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
         <span className="hidden h-5 w-px bg-border md:block" aria-hidden />
         <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground md:block">
-          Baden-Württemberg sector
+          {activeScope?.group ?? "Region"}
         </span>
 
         <div className="ml-auto flex items-center gap-3">
+          <ScopePicker
+            scopes={scopes}
+            groups={scopeGroups}
+            activeScope={activeScope}
+            pending={scopePending}
+            error={scopeError}
+            onSelect={handleScopeSelect}
+          />
+
           <span
             className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
             title="Data source: live backend pipeline vs. bundled demo dataset"
@@ -177,6 +236,21 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           >
             AI {health?.ai_mode ?? "mock"}
           </span>
+
+          {mode === "live" && streaming?.enabled && (
+            <span
+              className="hidden items-center gap-2 rounded-full border border-gold/40 bg-gold-fill/10 px-3 py-1 xl:flex"
+              title="Real-time social-media streams (Mastodon WebSocket · Bluesky Jetstream)"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gold-fill opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-gold-fill" />
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold">
+                Streaming · {streaming.posts_per_min}/min
+              </span>
+            </span>
+          )}
 
           <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
             Last analysis{" "}
@@ -231,6 +305,54 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       <div className="flex min-h-0 flex-1">
         {/* Latest signals rail */}
         <aside className="hidden w-[300px] shrink-0 flex-col border-r border-border bg-background lg:flex">
+          {/* Real-time incoming-posts ticker (streaming mode only) */}
+          {mode === "live" && streaming?.enabled && (
+            <div className="shrink-0 border-b border-border">
+              <div className="flex items-center gap-2.5 px-5 py-3">
+                <Rss className="h-4 w-4 text-gold" />
+                <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
+                  Incoming Posts
+                </h2>
+                <span className="ml-auto rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  {streaming.posts_per_min}/min
+                </span>
+              </div>
+              <ul className="cl-scroll max-h-52 space-y-1.5 overflow-y-auto px-3 pb-3">
+                {(streamPosts?.length ?? 0) === 0 ? (
+                  <li className="px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                    Listening to live streams —{" "}
+                    {streaming.connections
+                      .map((c) => `${c.name.split(":")[0]}: ${c.state}`)
+                      .join(" · ") || "starting…"}
+                  </li>
+                ) : (
+                  streamPosts?.map((post) => {
+                    const isNew = !seenPostIds.current.has(post.id);
+                    return (
+                      <li
+                        key={post.id}
+                        className={`rounded-md border border-border bg-card px-2.5 py-2 ${isNew ? "cl-rise" : ""}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <VerdictChip verdict={post.verdict} />
+                          <span className="truncate text-[11px] font-semibold text-foreground">
+                            {post.author}
+                          </span>
+                          <span className="ml-auto shrink-0 font-mono text-[9px] text-muted-foreground">
+                            {timeAgo(post.timestamp)}
+                          </span>
+                        </span>
+                        <span className="mt-1 line-clamp-2 block text-[11px] leading-snug text-muted-foreground">
+                          {post.text}
+                        </span>
+                      </li>
+                    );
+                  })
+                )}
+              </ul>
+            </div>
+          )}
+
           <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
             <Activity className="h-4 w-4 text-gold" />
             <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
@@ -304,6 +426,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             selectedId={selectedId}
             onSelect={setSelectedId}
             theme={theme}
+            scope={activeScope}
           />
 
           {/* Triage legend */}

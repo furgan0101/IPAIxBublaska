@@ -91,6 +91,18 @@ The event taxonomy, severity grading, and responder action hints cover the offic
 
 Each class carries an impact-based severity (`high`/`moderate`/`low`) and a concise recommended responder action; security-sensitive classes (terror, hostage, CBRN) deliberately prescribe **information discipline** rather than operational detail. Preparedness *measures* from the catalogue (e.g. cooperation with federal authorities) are intentionally not incident types. The scenario injector includes a `chemical_accident` preset at the Staad ferry port to demonstrate the catalogue live.
 
+## Real-time streaming (FEEDS_STREAMING=true)
+
+On top of interval polling, the backend can hold **live connections to social media**: a multiplexed **Mastodon WebSocket** per instance (one subscribe per hashtag; auto-follows the redirect to dedicated streaming hosts, and degrades to ~25 s short-interval polling if the instance rejects anonymous streaming) and the **Bluesky Jetstream firehose** (keyless; the full post stream is filtered client-side by sector keyword + language + crisis classifier *before* anything reaches the pipeline). Every streamed post goes through the exact same normalise → dedup → assess → cluster path as polled posts and appears in the dashboard's **Incoming Posts ticker** within seconds (`GET /api/stream/recent`), first as `ANALYZING`, then flipping to its verdict.
+
+Quota protection on top of `LLM_MAX_CALLS`: `MAX_STREAM_ANALYSES_PER_MIN` (default 10) caps stream-triggered analyses — excess posts are deferred to the next regular poll, never analyzed twice. Streams reconnect with exponential backoff (1→60 s) and a dead stream never affects the poll loop. Connection states + posts/min are visible under `feeds.streaming` in `/api/health` and as a STREAMING badge in the header.
+
+## Runtime search scopes
+
+The live pipeline can switch its ingest/map region at runtime. `GET /api/scopes` returns the preset registry and active scope; `POST /api/scope` with `{"id":"usa"}` switches scope, clears the live store, reconfigures geocoding and stream prefilters, republishes an empty snapshot, then polls the new region. The shipped presets are `konstanz-sector` (default), Germany, USA, the European Union, all 16 German states and all 50 US states. `SEARCH_SCOPE=konstanz-sector` in `backend/.env` controls the startup scope.
+
+Limitations: the crisis classifier is German/English, so non-DE/EN EU posts are under-detected. NINA and Presseportal are German-only sources; outside Germany, social streams carry the region while those official connectors naturally go quiet.
+
 ## Live AI mode (optional — LiteLLM gateway)
 
 Mock mode is the default: **zero external calls**. To enable the live LLM analyst (Qwen3-VL via the govdigital LiteLLM gateway):

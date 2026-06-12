@@ -64,6 +64,68 @@ export interface SubmissionResult {
   reason_flagged?: string | null;
 }
 
+export interface StreamConnection {
+  name: string;
+  state: string;
+  events: number;
+  last_event_utc?: string | null;
+  detail?: string | null;
+}
+
+export interface StreamingInfo {
+  enabled: boolean;
+  posts_per_min: number;
+  queue_depth: number;
+  accepted: number;
+  filtered: number;
+  duplicates: number;
+  rate_deferred: number;
+  connections: StreamConnection[];
+}
+
+export interface SearchScope {
+  id: string;
+  label: string;
+  group: string;
+  mode: "radius" | "bbox";
+  /** [minLat, minLon, maxLat, maxLon] */
+  bbox: [number, number, number, number];
+  center: [number, number];
+  zoom: number;
+}
+
+export interface SearchScopeGroup {
+  group: string;
+  items: SearchScope[];
+}
+
+export interface ScopesResponse {
+  active: string;
+  scopes: SearchScope[];
+  groups?: SearchScopeGroup[];
+}
+
+export interface ScopeSwitchResponse {
+  status: "ok" | "mock-mode";
+  scope: SearchScope;
+  stats?: Record<string, number>;
+  detail?: string;
+}
+
+/** One entry of the real-time "incoming posts" ticker (GET /api/stream/recent). */
+export interface StreamPost {
+  id: string;
+  source: string;
+  author: string;
+  text: string;
+  timestamp: string;
+  url?: string | null;
+  verdict: "analyzing" | "verified" | "debunked";
+  credibility_score?: number | null;
+  event_type?: string | null;
+  reason?: string | null;
+}
+
 export interface HealthInfo {
   status: string;
   incidents: number;
@@ -71,6 +133,8 @@ export interface HealthInfo {
   ai_mode: "mock" | "live-ready" | "live";
   /** "live" when real-feed ingestion (FEEDS_ENABLED) is active. */
   data_mode?: "mock" | "live";
+  scope?: SearchScope;
+  feeds?: { streaming?: StreamingInfo; scope?: SearchScope } & Record<string, unknown>;
 }
 
 /** FastAPI backend base URL (override via NEXT_PUBLIC_API_URL). */

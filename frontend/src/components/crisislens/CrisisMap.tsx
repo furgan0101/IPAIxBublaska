@@ -6,10 +6,11 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
+import type { SearchScope } from "@/lib/types";
 
-/** Overview framing for the Baden-Württemberg sector. */
-const BW_CENTER: [number, number] = [48.62, 9.05];
-const BW_ZOOM = 8;
+/** Fallback until the backend scope registry arrives. */
+const DEFAULT_CENTER: [number, number] = [47.6603, 9.1758];
+const DEFAULT_ZOOM = 11;
 const FOCUS_ZOOM = 9;
 
 /** Wait for the detail-panel width transition (500 ms) before flying. */
@@ -31,7 +32,21 @@ function nodeIcon(color: string, selected: boolean): L.DivIcon {
  * detail panel resizes the map column, and flies to / away from the
  * selected report.
  */
-function MapController({ selected }: { selected: CrisisReport | null }) {
+function scopeBounds(scope: SearchScope): L.LatLngBoundsExpression {
+  const [minLat, minLon, maxLat, maxLon] = scope.bbox;
+  return [
+    [minLat, minLon],
+    [maxLat, maxLon],
+  ];
+}
+
+function MapController({
+  selected,
+  scope,
+}: {
+  selected: CrisisReport | null;
+  scope: SearchScope | null;
+}) {
   const map = useMap();
   const firstRun = useRef(true);
 
@@ -44,21 +59,25 @@ function MapController({ selected }: { selected: CrisisReport | null }) {
   }, [map]);
 
   useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false;
-      return;
-    }
+    const delay = firstRun.current ? 0 : FLY_DELAY_MS;
     const timer = window.setTimeout(() => {
+      map.invalidateSize({ animate: false });
       if (selected) {
         map.flyTo(selected.coordinates, Math.max(map.getZoom(), FOCUS_ZOOM), {
           duration: 0.9,
         });
+      } else if (scope) {
+        map.fitBounds(scopeBounds(scope), {
+          padding: [36, 36],
+          animate: !firstRun.current,
+        });
       } else {
-        map.flyTo(BW_CENTER, BW_ZOOM, { duration: 0.9 });
+        map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, { duration: 0.9 });
       }
-    }, FLY_DELAY_MS);
+      firstRun.current = false;
+    }, delay);
     return () => window.clearTimeout(timer);
-  }, [map, selected]);
+  }, [map, scope, selected]);
 
   return null;
 }
@@ -73,6 +92,7 @@ interface CrisisMapProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   theme: "dark" | "light";
+  scope: SearchScope | null;
 }
 
 export default function CrisisMap({
@@ -80,6 +100,7 @@ export default function CrisisMap({
   selectedId,
   onSelect,
   theme,
+  scope,
 }: CrisisMapProps) {
   const selected = reports.find((r) => r.id === selectedId) ?? null;
 
@@ -97,8 +118,8 @@ export default function CrisisMap({
 
   return (
     <MapContainer
-      center={BW_CENTER}
-      zoom={BW_ZOOM}
+      center={scope?.center ?? DEFAULT_CENTER}
+      zoom={scope?.zoom ?? DEFAULT_ZOOM}
       className="h-full w-full"
       zoomControl
     >
@@ -108,7 +129,7 @@ export default function CrisisMap({
         url={TILE_URLS[theme]}
       />
 
-      <MapController selected={selected} />
+      <MapController selected={selected} scope={scope} />
 
       {reports.map((report) => {
         const isSelected = report.id === selectedId;

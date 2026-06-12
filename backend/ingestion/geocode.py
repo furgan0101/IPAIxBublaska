@@ -66,6 +66,17 @@ class Geocoder:
         self._store = store
         self._lock = asyncio.Lock()
         self._last_request: float = 0.0
+        # Scope bias (defaults = Konstanz demo sector; see Geocoder.set_scope).
+        self._countrycodes: str = "de,ch"
+        self._viewbox: str = SECTOR_VIEWBOX
+        self._bounded: bool = True
+
+    def set_scope(self, countrycodes: str, viewbox: str, *, bounded: bool) -> None:
+        """Re-bias Nominatim to the active search scope. Large scopes use
+        bounded=False (viewbox as preference, not a hard wall)."""
+        self._countrycodes = countrycodes
+        self._viewbox = viewbox
+        self._bounded = bounded
 
     async def resolve(
         self,
@@ -93,7 +104,13 @@ class Geocoder:
     async def _cached_nominatim(
         self, client: httpx.AsyncClient, candidate: str
     ) -> tuple[float, float] | None:
-        cache_key = candidate.lower()
+        # Namespace the cache by full scope bias so a miss/hit from one region
+        # cannot be reused after switching to another region with the same
+        # country code.
+        cache_key = (
+            f"{self._countrycodes}:{self._viewbox}:{int(self._bounded)}:"
+            f"{candidate.lower()}"
+        )
         if self._store.geocode_has(cache_key):
             return self._store.geocode_get(cache_key)  # None == known miss
         coords = await self._query_nominatim(client, candidate)
@@ -115,9 +132,9 @@ class Geocoder:
                         "q": place,
                         "format": "jsonv2",
                         "limit": "1",
-                        "countrycodes": "de,ch",
-                        "viewbox": SECTOR_VIEWBOX,
-                        "bounded": "1",  # local match or nothing
+                        "countrycodes": self._countrycodes,
+                        "viewbox": self._viewbox,
+                        "bounded": "1" if self._bounded else "0",
                     },
                 )
                 response.raise_for_status()
