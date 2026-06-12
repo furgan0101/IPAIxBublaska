@@ -30,6 +30,7 @@ from ingestion.base import Connector, FetchedItem
 from ingestion.classify import classify
 from ingestion.config import IngestionSettings
 from ingestion.geocode import Geocoder
+from ingestion.dwd import DwdConnector
 from ingestion.mastodon import MastodonConnector
 from ingestion.nina import NinaConnector
 from ingestion.presseportal import PresseportalConnector
@@ -50,6 +51,7 @@ ID_PREFIXES: dict[str, str] = {
     "nina": "NINA",
     "presseportal": "POL",
     "mastodon": "MSTDN",
+    "dwd": "DWD",
 }
 
 #: Official channels lift the cluster confidence to at least this floor —
@@ -57,6 +59,7 @@ ID_PREFIXES: dict[str, str] = {
 OFFICIAL_CONFIDENCE_FLOOR: dict[str, float] = {
     "nina": 0.90,
     "presseportal": 0.80,
+    "dwd": 0.90,
 }
 
 DEBUNKED_LIMIT: int = 60
@@ -72,6 +75,7 @@ def default_connectors(settings: IngestionSettings) -> list[Connector]:
         NinaConnector(settings),
         PresseportalConnector(settings),
         MastodonConnector(settings),
+        DwdConnector(settings),
     ]
 
 

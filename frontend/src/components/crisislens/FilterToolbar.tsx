@@ -22,8 +22,6 @@ export default function FilterToolbar({
   minConfidence,
   setMinConfidence,
 }: FilterToolbarProps) {
-  const confidenceValue = Math.max(1, Math.min(5, Math.ceil(minConfidence / 20) || 1));
-
   return (
     <div className="flex shrink-0 items-center justify-between gap-6 border-b border-border bg-card px-6 py-2">
       <div className="flex min-w-0 items-center gap-4">
@@ -50,9 +48,9 @@ export default function FilterToolbar({
               type="range"
               min="1"
               max="5"
-              step="1"
-              value={confidenceValue}
-              onChange={(e) => setMinConfidence((parseInt(e.target.value, 10) - 1) * 20 + 1)}
+              step="0.25"
+              value={minConfidence}
+              onChange={(e) => setMinConfidence(parseFloat(e.target.value))}
               className="cl-confidence-slider relative z-10 h-2 w-32 cursor-pointer appearance-none bg-transparent transition-all"
             />
             {/* Discrete blocks track */}
@@ -66,8 +64,8 @@ export default function FilterToolbar({
               ))}
             </div>
           </div>
-          <span className="min-w-[3ch] font-mono text-xs font-semibold tabular-nums text-foreground">
-            {confidenceValue} / 5
+          <span className="min-w-[5ch] font-mono text-xs font-semibold tabular-nums text-foreground">
+            {minConfidence.toFixed(2)} / 5
           </span>
         </div>
       </div>

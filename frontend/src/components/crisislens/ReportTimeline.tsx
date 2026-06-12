@@ -38,9 +38,7 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
         const bucketTime = new Date(now - (BUCKET_COUNT - 1 - i) * msPerBucket);
         hourLabels.push({
           index: i,
-          text: bucketTime.toLocaleTimeString("de-DE", {
-            hour: "2-digit",
-          }) + "h",
+          text: `${bucketTime.getHours()}h`,
         });
       }
     }

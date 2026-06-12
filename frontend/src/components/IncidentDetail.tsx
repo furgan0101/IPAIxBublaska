@@ -3,6 +3,7 @@
 import { ArrowLeft, Clock, Crosshair, ExternalLink, Radius, Users } from "lucide-react";
 
 import ConfidenceGauge from "@/components/ConfidenceGauge";
+import { getWorkingUrl } from "@/lib/urls";
 import { EventIcon, eventMeta } from "@/lib/eventMeta";
 import { timeAgo } from "@/lib/format";
 import type { Severity, VerifiedIncident } from "@/lib/types";
@@ -122,39 +123,42 @@ export default function IncidentDetail({
             Source timeline
           </p>
           <ol className="mt-2 space-y-3 border-l border-slate-800 pl-4">
-            {incident.sources.map((source) => (
-              <li key={source.id} className="relative">
-                <span
-                  aria-hidden
-                  className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-slate-950 bg-red-500"
-                />
-                <div className="flex items-baseline gap-2">
-                  <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-slate-400">
-                    {source.source}
-                  </span>
-                  <span className="truncate text-xs font-semibold text-slate-200">
-                    {source.author}
-                  </span>
-                  <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-500">
-                    {timeAgo(source.timestamp)}
-                  </span>
-                  {source.url && (
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 text-slate-600 transition-colors hover:text-red-400"
-                      aria-label="View original source"
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
-                </div>
-                <p className="mt-1 text-[11px] leading-snug text-slate-400">
-                  {source.text}
-                </p>
-              </li>
-            ))}
+            {incident.sources.map((source) => {
+              const resolvedUrl = getWorkingUrl(source.url, source.text, source.source, source.author);
+              return (
+                <li key={source.id} className="relative">
+                  <span
+                    aria-hidden
+                    className="absolute -left-[21.5px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-slate-950 bg-red-500"
+                  />
+                  <div className="flex items-baseline gap-2">
+                    <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-slate-400">
+                      {source.source}
+                    </span>
+                    <span className="truncate text-xs font-semibold text-slate-200">
+                      {source.author}
+                    </span>
+                    <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-500">
+                      {timeAgo(source.timestamp)}
+                    </span>
+                    {resolvedUrl && (
+                      <a
+                        href={resolvedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-slate-600 transition-colors hover:text-red-400"
+                        aria-label="View original source"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                    {source.text}
+                  </p>
+                </li>
+              );
+            })}
           </ol>
         </div>
       </div>

@@ -109,12 +109,25 @@ export default function Landing({
             Civil protection
           </p>
 
-          <h1
-            className="cl-rise mt-6 font-display text-7xl font-semibold leading-[0.95] tracking-tight sm:text-8xl"
-            style={{ animationDelay: "0.15s" }}
-          >
-            Crisis<span className="text-gold">Lens</span>
-          </h1>
+          <div className="mt-6 flex flex-col justify-between gap-10 lg:flex-row lg:items-center">
+            <h1
+              className="cl-rise font-display text-7xl font-semibold leading-[0.95] tracking-tight sm:text-8xl"
+              style={{ animationDelay: "0.15s" }}
+            >
+              Crisis<span className="text-gold">Lens</span>
+            </h1>
+            
+            <div 
+              className="cl-rise max-w-lg overflow-hidden rounded-xl border border-border bg-muted/30 shadow-2xl"
+              style={{ animationDelay: "0.2s" }}
+            >
+              <img 
+                src="/hero-map.png" 
+                alt="Situational awareness map" 
+                className="h-auto w-full object-cover grayscale invert dark:grayscale-0 dark:invert-0"
+              />
+            </div>
+          </div>
 
           <p
             className="cl-rise mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground"

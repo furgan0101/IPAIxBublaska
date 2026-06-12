@@ -4,6 +4,7 @@
  * rail, dossier — renders real data without touching the components.
  */
 import { eventMeta } from "@/lib/eventMeta";
+import { getWorkingUrl } from "@/lib/urls";
 import type {
   Credibility,
   CrisisReport,
@@ -55,12 +56,13 @@ function flagRuleName(reason: string): string {
 }
 
 function evidenceFrom(source: SourceReport): EvidenceLink {
+  const resolvedHref = getWorkingUrl(source.url, source.text, source.source, source.author);
   return {
     sourceType: sourceTypeFor(source.source),
     title: `${source.author}: ${truncate(source.text, 90)}`,
     time: source.timestamp,
     credibility: credibilityFor(source.source),
-    href: source.url ?? "#",
+    href: resolvedHref,
     mediaPreview: source.media_preview ?? null,
   };
 }
@@ -123,7 +125,9 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
       : "—",
     mediaPreviews,
     mediaConsistency: mediaNotes[mediaNotes.length - 1] ?? null,
-    externalUrl: newest?.url ?? null,
+    externalUrl: newest
+      ? getWorkingUrl(newest.url, newest.text, newest.source, newest.author)
+      : null,
   };
 }
 
@@ -154,7 +158,7 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
         title: `${report.author}: ${truncate(report.text, 90)}`,
         time: report.timestamp,
         credibility: "low",
-        href: report.url ?? "#",
+        href: getWorkingUrl(report.url, report.text, report.source, report.author),
         mediaPreview: report.media_preview ?? null,
       },
     ],
@@ -162,7 +166,7 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
     signalSource: `${report.author} · ${sourceTypeFor(report.source)}`,
     mediaPreviews: report.media_preview ? [report.media_preview] : [],
     mediaConsistency: report.media_consistency ?? null,
-    externalUrl: report.url ?? null,
+    externalUrl: getWorkingUrl(report.url, report.text, report.source, report.author),
   };
 }
 

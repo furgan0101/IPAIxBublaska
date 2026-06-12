@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, PanelLeftClose, PanelLeftOpen, RotateCcw } from "lucide-react";
+import { Activity, BarChart3, PanelLeftClose, PanelLeftOpen, RotateCcw, Search } from "lucide-react";
 
 import {
   MOCK_REPORTS,
@@ -80,7 +80,9 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [focusCity, setFocusCity] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
-  const [minConfidence, setMinConfidence] = useState(0);
+  const [minConfidence, setMinConfidence] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [manualFocus, setManualFocus] = useState<MapFocus | null>(null);
   const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
@@ -108,12 +110,25 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       if (activeTag) {
         filtered = filtered.filter((r) => r.crisisType === activeTag);
       }
-      if (minConfidence > 0) {
-        filtered = filtered.filter((r) => r.confidence >= minConfidence);
+      if (minConfidence > 1) {
+        // Map 1-5 scale to 0-100% threshold: (val-1) * 25
+        // e.g., 1.0 -> 0%, 3.0 -> 50%, 5.0 -> 100%
+        const threshold = (minConfidence - 1) * 25;
+        filtered = filtered.filter((r) => r.confidence >= threshold);
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.city.toLowerCase().includes(q) ||
+            r.crisisType.toLowerCase().includes(q) ||
+            r.signalSnippet.toLowerCase().includes(q) ||
+            r.signalSource.toLowerCase().includes(q),
+        );
       }
       return filtered;
     },
-    [allReports, activeTag, minConfidence],
+    [allReports, activeTag, minConfidence, searchQuery],
   );
 
   const tagCounts = useMemo(() => {
@@ -147,15 +162,38 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   }, [focusCity, reports]);
 
   const cityFocus = useMemo<MapFocus | null>(() => {
-    if (!focusCity || scopedReports.length === 0) return null;
-    const lat =
-      scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
-      scopedReports.length;
-    const lon =
-      scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
-      scopedReports.length;
-    return { center: [lat, lon], zoom: 12 };
-  }, [focusCity, scopedReports]);
+    // 1. Manual map jump (from search)
+    if (manualFocus) return manualFocus;
+
+    // 2. Manual city focus (Command Mode)
+    if (focusCity && scopedReports.length > 0) {
+      const lat =
+        scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
+        scopedReports.length;
+      const lon =
+        scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
+        scopedReports.length;
+      return { center: [lat, lon], zoom: 12 };
+    }
+
+    // 3. Search results zoom
+    // If the user has typed something that filters the list, fly to the center of results.
+    const isSearching = searchQuery.trim().length >= 2;
+    if (isSearching && reports.length > 0) {
+      const lat =
+        reports.reduce((sum, r) => sum + r.coordinates[0], 0) / reports.length;
+      const lon =
+        reports.reduce((sum, r) => sum + r.coordinates[1], 0) / reports.length;
+
+      // If results are few or all in one city, zoom deep. Otherwise, overview.
+      const uniqueCities = new Set(reports.map((r) => r.city));
+      const zoom = (reports.length <= 3 || uniqueCities.size === 1) ? 14 : 10;
+
+      return { center: [lat, lon], zoom };
+    }
+
+    return null;
+  }, [focusCity, scopedReports, reports, searchQuery, manualFocus]);
 
   const firstSignal = useMemo(
     () => (focusCity ? firstSignalAt(scopedReports) : null),
@@ -299,10 +337,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          {!focusCity && (
-            <CityFocusPicker reports={reports} onFocus={enterCommandMode} />
-          )}
-
           {selected && (
             <button
               type="button"
@@ -457,7 +491,53 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
 
-        </main>
+          {/* Floating Search Bar */}
+          <div className="pointer-events-none absolute bottom-6 left-1/2 z-[1000] -translate-x-1/2 overflow-hidden px-4 transition-all duration-300">
+            <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2 shadow-lg">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search signals, or type a city and press Enter..."
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  if (!e.target.value) setManualFocus(null);
+                }}
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter" && searchQuery.trim().length >= 2) {
+                    try {
+                      const res = await fetch(
+                        `http://localhost:8000/api/geocode?q=${encodeURIComponent(searchQuery)}`,
+                      );
+                      const data = await res.json();
+                      if (data.lat && data.lon) {
+                        setManualFocus({
+                          center: [data.lat, data.lon],
+                          zoom: 14,
+                        });
+                      }
+                    } catch (err) {
+                      console.error("Search geocoding failed", err);
+                    }
+                  }
+                }}
+                className="w-64 bg-transparent font-mono text-xs text-foreground placeholder-muted-foreground/60 focus:outline-none lg:w-96"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setManualFocus(null);
+                  }}
+                  title="Clear search"
+                  className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          </div>
+          </main>
 
         {/* Command console — LISTEN + RESPOND for the focused city. It
             collapses like the signals rail when the dossier takes over. */}

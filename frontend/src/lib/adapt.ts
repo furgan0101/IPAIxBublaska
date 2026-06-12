@@ -9,6 +9,7 @@
  */
 
 import { safeNewDate } from "@/lib/format";
+import { getWorkingUrl } from "@/lib/urls";
 import {
   type CrisisReport,
   type Credibility,
@@ -90,7 +91,7 @@ function evidenceFromSource(s: SourceReport): EvidenceLink {
     title: `${s.author}: ${s.text}`.slice(0, 120),
     time: s.timestamp,
     credibility: "medium",
-    href: s.url ?? "#",
+    href: getWorkingUrl(s.url, s.text, s.source, s.author),
   };
 }
 
@@ -133,6 +134,9 @@ export function incidentToReport(inc: VerifiedIncident): CrisisReport {
     signalSource: primary
       ? `${primary.author} · ${sourceType(primary.source)}`
       : channels.join(", "),
+    externalUrl: primary
+      ? getWorkingUrl(primary.url, primary.text, primary.source, primary.author)
+      : null,
   };
 }
 
@@ -166,11 +170,12 @@ export function debunkedToReport(d: DebunkedReport): CrisisReport {
         title: `${d.author}: ${d.text}`.slice(0, 120),
         time: d.timestamp,
         credibility: credibilityBand(rawScore),
-        href: d.url ?? "#",
+        href: getWorkingUrl(d.url, d.text, d.source, d.author),
       },
     ],
     signalSnippet: d.text,
     signalSource: `${d.author} · ${sourceType(d.source)}`,
+    externalUrl: getWorkingUrl(d.url, d.text, d.source, d.author),
   };
 }
 
