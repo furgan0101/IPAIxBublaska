@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+html,
+body {
+  height: 100%;
+}
+
+/* Leaflet needs an explicit size on its container; it fills its flex parent. */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  background: #020617;
+}
+
+.incident-pin {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+
+/* Dark-ops styling for Leaflet popups. */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 0.5rem;
+}
+
+.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+}
