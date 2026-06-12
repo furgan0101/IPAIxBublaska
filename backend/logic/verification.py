@@ -87,13 +87,20 @@ class LLMBudgetExceeded(RuntimeError):
 
 SYSTEM_PROMPT: str = (
     "You are an expert OSINT intelligence analyst for VOSTbw, supporting civil-protection "
-    "crisis response in Baden-Württemberg. Analyze ONE public social-media report for "
-    "situational awareness. "
+    "crisis response in Baden-Württemberg. Analyze ONE incoming report for situational awareness. "
     "(1) Classify event_type as exactly one of the official BW crisis-scenario classes: "
     f"{', '.join(KNOWN_EVENT_TYPES)}, or 'other'. "
-    "(2) Assign a credibility_score from 0.0 to 1.0 based on tone, specificity, and plausibility. "
-    "(3) Set is_credible=false if the text reads as bot-spam, mass-share bait, or wildly "
-    "exaggerated/implausible; true if it reads like a genuine local or first-hand report. "
+    "(2) Assign a credibility_score from 0.0 to 1.0 using these explicit rules: "
+    "START at 0.5. "
+    "RAISE score for: official source (Polizei, Feuerwehr, DWD, NINA, Landratsamt, press office) +0.3; "
+    "specific location named +0.1; specific time given +0.05; calm factual tone +0.1; "
+    "multiple details consistent with each other +0.1. "
+    "LOWER score for: excessive punctuation (!!!!, CAPS LOCK abuse) -0.2; "
+    "emoji spam -0.15; vague unverifiable claims ('hunderte eingeschlossen') -0.1; "
+    "amplification language ('teilen', 'share before delete', 'media won\\'t show') -0.3; "
+    "single unverified social account with no details -0.15. "
+    "Clamp final score to [0.0, 1.0]. "
+    "(3) Set is_credible=true if score >= 0.45, false otherwise. "
     "(4) If not credible, give a short reason_flagged (one concise English sentence). "
     "(5) Always give a rationale: 1–2 concise English sentences justifying your verdict. "
     "(6) media_consistency: null when no image is attached; otherwise one short sentence on "
@@ -131,6 +138,7 @@ BOT_SPAM_MARKERS: tuple[str, ...] = (
     "t.me/breaking",
     "100% confirmed!!!",
     "wake up people",
+    "#spaß",  # explicit joke/hoax tag on a crisis report
 )
 
 # --- Mode toggles (read at call time so .env changes and tests take effect) ------
@@ -413,7 +421,6 @@ def _build_messages(
         {"role": "user", "content": user_content},
     ]
 
-
 def _strip_code_fences(raw: str) -> str:
     """Tolerate models that wrap JSON in ``` fences despite instructions."""
     text = raw.strip()
@@ -505,7 +512,7 @@ def _assess_heuristics(report: RawReport) -> Assessment:
 
     for marker in BOT_SPAM_MARKERS:
         if marker in text:
-            return Assessment(False, f'Bot-spam phrasing detected: "{marker}"', 0.05)
+            return Assessment(False, f'Bot-spam phrasing detected: "{marker}"', 0.06)
 
     if report.exif_timestamp is not None:
         age = report.timestamp - report.exif_timestamp
@@ -540,10 +547,27 @@ def assess_report(report: RawReport) -> Assessment:
     """Score a single report. Heuristics always run first; the live LLM analyst
     adds a plausibility judgement when enabled. Never raises."""
     heuristic = _assess_heuristics(report)
-    if not heuristic.credible or not live_mode_enabled():
+    if not heuristic.credible:
+        print(
+            f"[FILTER] DEBUNKED (heuristic) {report.id} | {report.author} | {heuristic.reason}",
+            flush=True,
+        )
+        return heuristic
+    if not live_mode_enabled():
+        print(
+            f"[FILTER] PASSED (mock) {report.id} | {report.author} | score={heuristic.score}",
+            flush=True,
+        )
         return heuristic
     try:
-        return analyze_with_llm(report)
+        result = analyze_with_llm(report)
+        verdict = "VERIFIED" if result.credible else "DEBUNKED (AI)"
+        print(
+            f"[FILTER] {verdict} {report.id} | {report.author} | "
+            f"score={result.score:.2f} | {result.reason or 'ok'}",
+            flush=True,
+        )
+        return result
     except Exception:  # noqa: BLE001 — graceful degradation over hard failure
         logger.exception(
             "LLM analysis failed for %s — falling back to heuristics", report.id

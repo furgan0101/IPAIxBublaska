@@ -23,8 +23,6 @@ import {
 import { timeAgo } from "@/lib/format";
 import ConfidenceRing from "./ConfidenceRing";
 
-const PANEL_WIDTH = 416;
-
 const SOURCE_ICONS: Record<SourceType, typeof Newspaper> = {
   "Local News": Newspaper,
   "Social Media": AtSign,
@@ -80,13 +78,10 @@ export default function DetailPanel({ report, onClose }: DetailPanelProps) {
   return (
     <aside
       className="shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out"
-      style={{ width: report ? PANEL_WIDTH : 0 }}
+      style={{ width: report ? "50%" : 0 }}
       aria-hidden={!report}
     >
-      <div
-        className="flex h-full flex-col border-l border-border bg-background"
-        style={{ width: PANEL_WIDTH }}
-      >
+      <div className="flex h-full w-full min-w-[360px] flex-col border-l border-border bg-background">
         {shown && <PanelContent report={shown} onClose={onClose} />}
       </div>
     </aside>
@@ -276,7 +271,7 @@ function PanelContent({
                     href={evidence.href}
                     {...(evidence.href === "#"
                       ? { onClick: (e: React.MouseEvent) => e.preventDefault() }
-                      : { target: "_blank", rel: "noreferrer" })}
+                      : { target: "_blank", rel: "noopener noreferrer" })}
                     className="group flex items-center gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:bg-muted/60"
                   >
                     {evidence.mediaPreview ? (

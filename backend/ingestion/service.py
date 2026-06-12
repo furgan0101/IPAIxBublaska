@@ -248,6 +248,7 @@ class IngestionService:
         if event_type is None:
             return None, "not_crisis"
 
+        had_explicit_coords = item.lat is not None and item.lon is not None
         lat, lon = item.lat, item.lon
         if lat is None or lon is None:
             place_hint = item.place_hint
@@ -265,11 +266,12 @@ class IngestionService:
                 return None, "unlocated"
             lat, lon = coords
 
-        distance_km = geodesic(
-            (lat, lon), (self._settings.sector_lat, self._settings.sector_lon)
-        ).kilometers
-        if distance_km > self._settings.sector_radius_km:
-            return None, "off_sector"
+        if had_explicit_coords:
+            distance_km = geodesic(
+                (lat, lon), (self._settings.sector_lat, self._settings.sector_lon)
+            ).kilometers
+            if distance_km > self._settings.sector_radius_km:
+                return None, "off_sector"
 
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:8].upper()
         prefix = ID_PREFIXES.get(item.source, "LIVE")
