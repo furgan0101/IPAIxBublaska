@@ -135,17 +135,14 @@ body {
   transform: translate(-50%, -50%);
   animation: pin-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
-
 .pin-ring--amber {
   border-color: rgb(245 158 11 / 0.9);
 }
-
 @keyframes pin-ping {
   0% {
     transform: translate(-50%, -50%) scale(0.6);
     opacity: 0.9;
   }
-
   80%,
   100% {
     transform: translate(-50%, -50%) scale(3.4);
@@ -221,12 +218,10 @@ body {
     transform: scale(0.55);
     opacity: 0.75;
   }
-
   70% {
     transform: scale(1.85);
     opacity: 0;
   }
-
   100% {
     transform: scale(1.85);
     opacity: 0;
@@ -240,7 +235,6 @@ body {
     opacity: 0;
     transform: translateY(12px);
   }
-
   to {
     opacity: 1;
     transform: none;
@@ -256,7 +250,6 @@ body {
   from {
     opacity: 0;
   }
-
   to {
     opacity: 1;
   }
@@ -285,73 +278,26 @@ body {
   background: transparent;
 }
 
-/* ------------------------------------------------------- command mode */
+/* --------------------------------------------------- confidence slider */
 
-/* Black/gold civil-protection caution stripe — Command Mode's signature
-   rule. A flat two-colour pattern, in keeping with the no-gradients rule. */
-.cl-hazard {
-  background: repeating-linear-gradient(-45deg,
-      #0c0c0d 0px,
-      #0c0c0d 10px,
-      var(--gold-fill) 10px,
-      var(--gold-fill) 20px);
+.cl-confidence-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 18px;
+  background: var(--foreground);
+  border: 2px solid var(--background);
+  border-radius: 2px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-/* Measures Layer — operational pins the official places in Command Mode. */
-.cl-measure-wrap {
-  background: transparent;
-  border: none;
-}
-
-.cl-measure {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  border-radius: 9px;
-  background: var(--measure);
-  color: #ffffff;
-  border: 2px solid var(--card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-}
-
-.cl-measure--planned {
-  border-style: dashed;
-}
-
-.cl-measure--done {
-  opacity: 0.55;
-}
-
-.cl-measure--hover,
-.cl-measure:hover {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--measure) 35%, transparent);
-}
-
-.cl-measure--selected::after {
-  content: "";
-  position: absolute;
-  inset: -6px;
-  border-radius: 12px;
-  border: 2px solid var(--foreground);
-}
-
-/* Grab-dot for resizing an action zone. */
-.cl-zone-handle {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: 9999px;
-  background: var(--card);
-  border: 3px solid #ea580c;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
-  cursor: ew-resize;
-}
-
-/* Crosshair while a palette tool is armed. */
-.cl-armed .leaflet-container,
-.cl-armed .leaflet-interactive {
-  cursor: crosshair;
+.cl-confidence-slider::-moz-range-thumb {
+  width: 12px;
+  height: 18px;
+  background: var(--foreground);
+  border: 2px solid var(--background);
+  border-radius: 2px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }

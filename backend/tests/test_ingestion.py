@@ -21,7 +21,6 @@ from ingestion.base import FetchedItem, html_to_text, parse_utc
 from ingestion.classify import classify
 from ingestion.config import IngestionSettings
 from ingestion import gazetteer
-from ingestion.feuerwehr import FeuerwehrConnector
 from ingestion.geocode import place_candidates
 from ingestion.mastodon import MastodonConnector
 from ingestion.nina import NinaConnector
@@ -167,31 +166,6 @@ def test_presseportal_parser_extracts_items_and_place_hints(tmp_path: Path) -> N
         assert item.timestamp.tzinfo is not None
         assert item.place_hint, "police titles carry a (Ort / Lkr.) prefix"
         assert "Polizeipräsidium" in item.author
-
-
-def test_feuerwehr_connector_reuses_rss_parser_and_retags_source(
-    tmp_path: Path,
-) -> None:
-    # Same Presseportal RSS shape as police; only the channel differs.
-    raw = (FIXTURES / "presseportal_kn.rss2.xml").read_text(encoding="utf-8")
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200, text=raw, headers={"Content-Type": "application/rss+xml"}
-        )
-
-    connector = FeuerwehrConnector(
-        make_settings(tmp_path, fire_feeds=("https://feeds.example/fw.rss2",))
-    )
-
-    async def scenario() -> list[FetchedItem]:
-        async with mock_client(handler) as client:
-            return await connector.fetch(client)
-
-    items = asyncio.run(scenario())
-    assert items, "fire feed should yield items"
-    assert all(item.source == "feuerwehr" for item in items)
-    assert all(item.place_hint for item in items)  # parser still extracts (Ort)
 
 
 def test_mastodon_parser_strips_html_and_skips_nothing_recorded(
