@@ -54,6 +54,20 @@ export const INJECT_PRESETS: InjectPreset[] = [
     },
   },
   {
+    key: "hazmat",
+    label: "Chemical accident · Fährhafen",
+    blurb: "BW catalogue class: industrial hazmat → new incident with CBRN-grade action hint",
+    tone: "verify",
+    payload: {
+      source: "twitter",
+      author: "@hafen_meldung",
+      text: "Gefahrgutaustritt an einem LKW am Fährhafen Staad, beißender Geruch, Feuerwehr riegelt ab. #Konstanz",
+      event_type: "chemical_accident",
+      lat: 47.6745,
+      lon: 9.2008,
+    },
+  },
+  {
     key: "recycled",
     label: "Recycled-footage hoax",
     blurb: "Media EXIF is days old → caught by the temporal check",
