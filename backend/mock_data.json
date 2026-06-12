@@ -1,5 +1,5 @@
 {
-  "_comment": "Synthetic OSINT feed for the VOSTbw demo — Konstanz, 2026-06-12. All accounts, posts and media URLs are fictional. Timestamps are rebased to 'now' by the backend at startup so the demo always looks live. RPT-002/004/006 are deliberate disinformation (stale EXIF / bot-spam / conflicting geotag).",
+  "_comment": "Synthetic OSINT feed for the VOSTbw demo — Konstanz, 2026-06-12. All accounts, posts and media URLs are fictional. Timestamps are rebased to 'now' by the backend at startup so the demo always looks live. 12 reports: 8 credible (flood x3, fire x2, storm x2, power_outage x1) and 4 deliberate disinformation (stale EXIF / bot-spam x2 / conflicting geotag).",
   "reports": [
     {
       "id": "RPT-001",
@@ -87,6 +87,20 @@
     },
     {
       "id": "RPT-007",
+      "source": "telegram",
+      "author": "kn_unwetter",
+      "text": "Sturmböe hat mehrere Bäume im Herosé-Park umgeworfen, Uferweg am Seerhein blockiert. Bitte umfahren.",
+      "event_type": "storm",
+      "lat": 47.6648,
+      "lon": 9.1692,
+      "timestamp": "2026-06-12T13:38:00Z",
+      "exif_timestamp": null,
+      "exif_lat": null,
+      "exif_lon": null,
+      "media_url": null
+    },
+    {
+      "id": "RPT-008",
       "source": "mastodon",
       "author": "@seeblick_kn",
       "text": "Seestraße zwischen Yachthafen und Casino unter Wasser, Autos drehen um. Bitte den Bereich meiden! #Bodensee #Hochwasser",
@@ -100,7 +114,21 @@
       "media_url": null
     },
     {
-      "id": "RPT-008",
+      "id": "RPT-009",
+      "source": "twitter",
+      "author": "@wahrheit_jetzt",
+      "text": "GIFTWOLKE über Konstanz nach angeblichem Brand!! The media won't show you this! Teilen bevor es gelöscht wird!",
+      "event_type": "fire",
+      "lat": 47.6597,
+      "lon": 9.1751,
+      "timestamp": "2026-06-12T13:44:00Z",
+      "exif_timestamp": null,
+      "exif_lat": null,
+      "exif_lon": null,
+      "media_url": null
+    },
+    {
+      "id": "RPT-010",
       "source": "telegram",
       "author": "konstanz_live",
       "text": "Update Rheingasse: Dachstuhl brennt, Drehleiter im Einsatz, Rheinsteig ist gesperrt.",
@@ -108,6 +136,34 @@
       "lat": 47.6655,
       "lon": 9.1739,
       "timestamp": "2026-06-12T13:48:00Z",
+      "exif_timestamp": null,
+      "exif_lat": null,
+      "exif_lon": null,
+      "media_url": null
+    },
+    {
+      "id": "RPT-011",
+      "source": "telegram",
+      "author": "stadtwerke_watch",
+      "text": "Stromausfall in Teilen von Petershausen-Ost, Ampeln an der Mainaustraße dunkel. Stadtwerke informiert.",
+      "event_type": "power_outage",
+      "lat": 47.6688,
+      "lon": 9.1815,
+      "timestamp": "2026-06-12T13:52:00Z",
+      "exif_timestamp": null,
+      "exif_lat": null,
+      "exif_lon": null,
+      "media_url": null
+    },
+    {
+      "id": "RPT-012",
+      "source": "twitter",
+      "author": "@rad_kn",
+      "text": "Baum auf den Fahrradweg an der Schänzlebrücke gestürzt, Sperrung in beide Richtungen. Vorsicht bei Böen!",
+      "event_type": "storm",
+      "lat": 47.6652,
+      "lon": 9.1681,
+      "timestamp": "2026-06-12T13:55:00Z",
       "exif_timestamp": null,
       "exif_lat": null,
       "exif_lon": null,

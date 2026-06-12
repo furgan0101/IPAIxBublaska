@@ -101,7 +101,8 @@ body {
 }
 
 .incident-pin {
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  background: transparent;
+  border: none;
 }
 
 /* Themed Leaflet popups (legacy VOSTbw view) and CrisisLens tooltips. */
@@ -112,8 +113,30 @@ body {
   border: 1px solid var(--border);
 }
 
-.leaflet-popup-content-wrapper {
-  border-radius: 0.5rem;
+.pin-ring {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 2px solid rgb(239 68 68 / 0.9);
+  transform: translate(-50%, -50%);
+  animation: pin-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.pin-ring--amber {
+  border-color: rgb(245 158 11 / 0.9);
+}
+@keyframes pin-ping {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0.9;
+  }
+  80%,
+  100% {
+    transform: translate(-50%, -50%) scale(3.4);
+    opacity: 0;
+  }
 }
 
 .leaflet-popup-close-button {

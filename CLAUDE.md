@@ -7,16 +7,19 @@ Global system prompt and operating guide for the **Automated OSINT Situational A
 ## Project Architecture
 
 ### Backend — Python / FastAPI (`backend/`)
-- **AI orchestration** — `logic/verification.py`: credibility filter (mock heuristics standing in for LLM + Vision calls; clearly marked API-key drop-in point, `ANTHROPIC_API_KEY` via `backend/.env`).
+- **AI orchestration** — `logic/verification.py`: two-layer credibility filter. Deterministic heuristics always run first (bot-spam markers, stale EXIF, geotag drift); an opt-in **live LLM analyst** (OpenAI SDK → LiteLLM gateway, model `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`, optional vision) judges tone/plausibility on top. Env via `backend/.env`: `LITELLM_API_KEY`, `USE_LIVE_AI`, `USE_VISION`. LLM output is strict JSON validated by Pydantic (`LLMAnalysis`); bad JSON → `AI Parsing Error` debunk; infra failure → heuristic fallback (never crash).
 - **EXIF-based checks** — stale capture timestamps (recycled footage) and conflicting geotags, parsed from report metadata.
 - **Geospatial** — `logic/geospatial.py`: **Geopy** geodesic clustering (same event type + **1.0 km radius** + **60 min window** → one `VerifiedIncident`). PostGIS is the scale-up path once a real DB lands; the MVP is in-memory.
-- **Schemas** — `schemas.py`: Pydantic models `RawReport`, `VerifiedIncident`, `DebunkedReport`.
-- **API** — `main.py`: `GET /api/incidents`, `GET /api/debunked`, `GET /api/health`; CORS open for `localhost:3000`.
+- **Responder guidance** — `logic/guidance.py`: deterministic `severity` grading + per-incident `action_hint` (the challenge's "action hints"); embedded into each `VerifiedIncident` together with its `sources` timeline. The event taxonomy (`KNOWN_EVENT_TYPES`, 27 classes) mirrors the **BW Ministry of the Interior crisis catalogue** (natural hazards, tech/industrial, CBRN, pandemic, terrorism/security, supply crises, evacuations); the LLM classifier and `frontend/src/lib/eventMeta.tsx` are constrained/synced to it.
+- **Schemas** — `schemas.py`: Pydantic models `RawReport`, `SourceReport`, `VerifiedIncident`, `DebunkedReport` (frontend mirror: `frontend/src/lib/types.ts` — keep in sync).
+- **API** — `main.py`: `GET /api/incidents`, `GET /api/debunked`, `GET /api/health`, plus `POST /api/reports` (live injection) and `POST /api/reset` (demo reset); CORS open for `localhost:3000`.
 
 ### Frontend — Next.js (`frontend/`)
-- **React 19 + Tailwind v4** App Router, TypeScript, `src/` layout.
-- **Leaflet / React-Leaflet** — `src/components/Map.tsx`, client-side-only (dynamic import, `ssr: false`), red pins + 1 km radius rings, CARTO dark basemap.
-- **Sidebar** — `src/components/Sidebar.tsx`: tabs **Live Incidents** / **Disinformation Caught** (the latter highlights `reason_flagged`).
+- **React 19 + Tailwind v4** App Router, TypeScript, `src/` layout. Design tokens (signal palette, glass panels, motion keyframes) live in `src/app/globals.css` (`@theme` / `@utility`); reduced-motion is honored globally.
+- **Leaflet / React-Leaflet** — `src/components/Map.tsx`, client-side-only (dynamic import, `ssr: false`): red pins + 1 km rings on a CARTO dark basemap, hover/select cross-highlighting, fly-to controller, pulse rings on new incidents, amber DEBUNKED flash pin for hoaxes.
+- **Sidebar** — `src/components/Sidebar.tsx`: tabs **Live Incidents** / **Disinfo Caught** (flag-rule badges + `reason_flagged`), swaps to `IncidentDetail.tsx` (dossier: confidence gauge, severity, action hint, source timeline) on selection.
+- **SITREP layer** — `KpiStrip.tsx` (count-up KPIs + type breakdown), `FilterChips.tsx` (filters map + lists), `Toasts.tsx` (verdict notifications), `DemoControls.tsx` (collapsible scenario injector via `src/lib/presets.ts`).
+- **Data layer** — `src/hooks/useDashboard.ts`: single poll loop (5 s) + on-demand refresh returning a snapshot; `useCountUp.ts` for animated numbers; shared event metadata in `src/lib/eventMeta.tsx`. UI state (selection, filter, tab, focus) is composed in `src/app/page.tsx`.
 
 ### Pipeline separation (keep these independently testable)
 1. **Ingestion** — `mock_data.json` → validated `RawReport` list (`main.load_raw_reports`).
@@ -63,7 +66,7 @@ cd frontend && npm run dev
 
 1. **Always type-hint Python code.** Full annotations on every function signature; Pydantic models for all data crossing a boundary.
 2. **Prioritize the "Happy Path" for the MVP.** A flawless end-to-end demo beats exhaustive edge-case coverage. Cut scope, not the demo.
-3. **Use mock data for LLM and Vision APIs** to prevent rate-limiting and burned credits — never hit live LLM/geocoding APIs during UI testing. **But structure the code so API keys can be dropped in later**: the swap point lives in `logic/verification.py` (`ANTHROPIC_API_KEY` in `backend/.env`; `/api/health` reports `mock` vs `live-ready`).
+3. **Mock-by-default for LLM and Vision APIs** to prevent rate-limiting and burned credits — never hit live AI/geocoding APIs during UI testing or pytest. Live mode is a pure config flip: `LITELLM_API_KEY` + `USE_LIVE_AI=true` in `backend/.env` (`/api/health` reports `mock` / `live-ready` / `live`). Tests must stay green offline with zero network calls.
 4. **Always use the metric system.** Kilometres, metres, °C — in code, UI copy, and docs.
 5. **Strict JSON output schemas** for all AI-filter logic: constrain the model, validate with Pydantic, fail loudly — no parsing crashes.
 6. **Clean pipeline separation** between data ingestion, AI verification (temporal/spatial checks), and API routing.
