@@ -1,33 +1,161 @@
 @import "tailwindcss";
 
+/* ── VOSTbw design tokens ─────────────────────────────────────────────── */
+@theme {
+  --color-surface-0: #020617;
+  --color-surface-1: #0f172a;
+  --color-surface-2: #1e293b;
+
+  --color-crisis: #ef4444; /* verified incident signal   */
+  --color-disinfo: #f59e0b; /* disinformation signal      */
+  --color-clear: #10b981; /* confidence / all-clear     */
+  --color-accent: #22d3ee; /* guidance / interactive     */
+
+  --font-mono:
+    ui-monospace, "Cascadia Mono", "JetBrains Mono", Menlo, Consolas,
+    monospace;
+
+  --animate-fade-up: fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-toast-in: toast-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(16px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* Glass panel used by everything floating over the map. */
+@utility panel-glass {
+  background: color-mix(in srgb, #0f172a 84%, transparent);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgb(51 65 85 / 0.55);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.45);
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────── */
 html,
 body {
   height: 100%;
 }
 
-/* Leaflet needs an explicit size on its container; it fills its flex parent. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── Leaflet ──────────────────────────────────────────────────────────── */
 .leaflet-container {
   height: 100%;
   width: 100%;
   background: #020617;
+  font: inherit;
 }
 
 .incident-pin {
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+  background: transparent;
+  border: none;
 }
 
-/* Dark-ops styling for Leaflet popups. */
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
-  background: #0f172a;
-  color: #e2e8f0;
-  border: 1px solid #334155;
+.pin-wrap {
+  position: relative;
+  display: grid;
+  place-items: center;
+  filter: drop-shadow(0 2px 6px rgb(0 0 0 / 0.6));
+}
+.pin-wrap > svg {
+  position: relative;
+  z-index: 1;
 }
 
-.leaflet-popup-content-wrapper {
-  border-radius: 0.5rem;
+.pin-ring {
+  position: absolute;
+  left: 50%;
+  top: 62%;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  border: 2px solid rgb(239 68 68 / 0.9);
+  transform: translate(-50%, -50%);
+  animation: pin-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.pin-ring--amber {
+  border-color: rgb(245 158 11 / 0.9);
+}
+@keyframes pin-ping {
+  0% {
+    transform: translate(-50%, -50%) scale(0.6);
+    opacity: 0.9;
+  }
+  80%,
+  100% {
+    transform: translate(-50%, -50%) scale(3.4);
+    opacity: 0;
+  }
 }
 
-.leaflet-popup-close-button {
-  color: #94a3b8 !important;
+.vost-tooltip {
+  background: #0f172a !important;
+  color: #e2e8f0 !important;
+  border: 1px solid #334155 !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5) !important;
+  padding: 6px 10px !important;
+}
+.vost-tooltip::before {
+  display: none;
+}
+
+.leaflet-control-attribution {
+  background: rgb(2 6 23 / 0.7) !important;
+  color: #475569 !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a {
+  color: #64748b !important;
+}
+.leaflet-control-zoom a {
+  background: #0f172a !important;
+  color: #cbd5e1 !important;
+  border-color: #334155 !important;
+}
+
+/* ── Accessibility: kill motion when the OS asks for it ───────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

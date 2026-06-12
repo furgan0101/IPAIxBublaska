@@ -2,6 +2,18 @@
 
 Hackathon MVP for **VOST Baden-Württemberg**: ingests raw OSINT posts (tweets, Telegram, Mastodon), runs them through an AI credibility filter and a geospatial verification engine, then plots **verified incidents** on a live Konstanz map — and proudly shows the **disinformation it caught**, with the reason each report was flagged.
 
+![VOSTbw OSINT dashboard](docs/dashboard.png)
+
+## Dashboard highlights
+
+- **SITREP strip** — live KPIs (active incidents, corroborating sources, disinfo caught, average confidence) with count-up animation, plus an event-type breakdown.
+- **Map ↔ list cross-highlighting** — hover either side and the other reacts; click a pin or card to open the **incident dossier** (the map flies to it).
+- **Incident dossier** — radial confidence gauge, severity badge, per-incident **source timeline**, and a prominent **RECOMMENDED ACTION** hint (the challenge's "action hints", derived from event type × corroboration × confidence).
+- **Event-type filter chips** — filter the map and both lists together.
+- **Live injection reactions** — toasts announce each verdict, verified reports fly-and-pulse on the map, hoaxes flash an amber **DEBUNKED** pin at their claimed location before landing in the caught-panel (which auto-opens).
+- **Flag-rule badges** — every caught item shows *which* check fired: `TEMPORAL` (stale EXIF), `SPATIAL` (geotag conflict), `LINGUISTIC` (bot-spam), `OUTPUT GUARD` (AI parsing).
+- Skeleton loading states, an intentional API-offline banner, keyboard/ARIA support, and full `prefers-reduced-motion` compliance.
+
 ```
 mock_data.json ──> ingestion ──> AI credibility filter ──> geo-clustering ──> FastAPI ──> Next.js map
  (8 raw posts)     RawReport      bot-spam / stale EXIF      1.0 km radius     :8000        :3000
@@ -49,6 +61,8 @@ npm run test:api
 | API — health / AI mode | http://localhost:8000/api/health |
 | Interactive API docs (Swagger) | http://localhost:8000/docs |
 
+Live-demo endpoints (POST): `POST /api/reports` injects one report through the full pipeline; `POST /api/reset` restores the initial mock state. Both are driven by the on-map **DEMO · INJECT LIVE REPORT** panel.
+
 ## How verification works (all metric)
 
 A raw report is **debunked** if any rule fires:
@@ -61,12 +75,34 @@ A raw report is **debunked** if any rule fires:
 
 Surviving reports are **clustered**: same event type, within a **1.0 km radius** of the cluster centroid, within a **60 min** window of another member → merged into one `VerifiedIncident`. Confidence scales with the number of independent corroborating sources.
 
+## Live AI mode (optional — LiteLLM gateway)
+
+Mock mode is the default: **zero external calls**. To enable the live LLM analyst (Qwen3-VL via the govdigital LiteLLM gateway):
+
+1. `cd backend` and copy `.env.example` → `.env`
+2. Set `LITELLM_API_KEY=<your key>` and `USE_LIVE_AI=true` (optionally `USE_VISION=true` for image-plausibility analysis)
+3. Restart the backend — `GET /api/health` now reports `"ai_mode": "live"` (`live-ready` = key present but toggle off)
+
+Behaviour in live mode: the deterministic heuristics (bot-spam / stale-EXIF / geotag drift) still run **first**; reports that pass are then judged by the LLM for tone, specificity and plausibility, and its extracted `event_type` refines classification before clustering. Infra failures degrade gracefully back to heuristics; unparseable model output is flagged as `AI Parsing Error`. Model: `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`, 20 s request timeout.
+
+One-call live smoke test (after setting the env vars):
+
+```powershell
+cd backend
+python -c "from main import load_raw_reports; from logic.verification import analyze_with_llm; print(analyze_with_llm(load_raw_reports()[0]))"
+```
+
 ## Demo script (for judges)
 
 1. `npm run dev` → open http://localhost:3000.
-2. **Map**: two red incident pins in Konstanz (flood at the Seestraße/Hafen waterfront — 3 corroborating sources; roof fire in the Niederburg — 2 sources), each with its 1 km verification ring. Click a pin for confidence + sources.
-3. **Sidebar → Disinformation Caught**: 3 flagged posts, each with the exact AI-filter reason — recycled 2019 flood video (stale EXIF), bot-spam "dam burst" panic post, and a "Bahnhof fire" photo whose EXIF geotag is 124 km away in Stuttgart.
-4. `GET /api/health` → shows `"ai_mode": "mock"`; drop an `ANTHROPIC_API_KEY` into `backend/.env` and it reports `live-ready` (key drop-in point: `backend/logic/verification.py`).
+2. **Map**: four incidents across Konstanz — flood at the Seestraße/Hafen waterfront (3 sources), roof fire in the Niederburg (2), storm damage at Herosé-Park/Schänzlebrücke (2), and a single-source power outage in Petershausen — each with its 1 km verification ring. Click a pin to open the dossier with the source timeline and the recommended action.
+3. **Sidebar → Disinfo Caught**: 4 flagged posts, each with the rule that fired and the exact reason — recycled 2019 flood video (stale EXIF), two bot-spam panic posts, and a "Bahnhof fire" photo whose EXIF geotag is 124 km away in Stuttgart.
+4. **Live injection** (the on-map DEMO panel) — push a report through the pipeline in real time:
+   - *Corroborating flood report* → merges into the live flood incident; confidence jumps (86% → 97%) and the source count rises.
+   - *New incident · north sector* → a fresh red pin appears north of the city.
+   - *Recycled-footage hoax* / *Bot-spam hoax* → caught instantly and dropped into "Disinformation Caught" with the reason.
+   - *Reset demo* → restores the starting state to run it again.
+5. `GET /api/health` → shows `"ai_mode": "mock"`; set `LITELLM_API_KEY` + `USE_LIVE_AI=true` in `backend/.env` and it flips to `live` — real LLM analysis with no code changes (see **Live AI mode** above).
 
 ## Notes
 

@@ -1,10 +1,14 @@
 """VOSTbw OSINT Situational Awareness API.
 
-Pipeline (runs once at startup):
+Pipeline (runs at startup, and again per live injection):
     mock_data.json --> RawReport models           (ingestion)
                    --> credibility filter         (logic.verification)
                    --> 1 km / 60 min clustering   (logic.geospatial)
                    --> /api/incidents + /api/debunked
+
+Live demo:
+    POST /api/reports  -> push one report through the pipeline, update state
+    POST /api/reset    -> restore the initial mock state (repeat the demo)
 
 Mock timestamps are rebased to "now" at startup so the dashboard always reads
 "x minutes ago" in a live demo, while every relative delta (e.g. the stale
@@ -22,8 +26,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from logic.geospatial import cluster_reports
-from logic.verification import LIVE_AI_READY, filter_reports
-from schemas import DebunkedReport, RawReport, VerifiedIncident
+from logic.verification import ai_mode, apply_event_type, assess_report, filter_reports
+from schemas import (
+    DebunkedReport,
+    RawReport,
+    ReportSubmission,
+    SubmissionResult,
+    VerifiedIncident,
+)
 
 DATA_FILE: Path = Path(__file__).parent / "mock_data.json"
 
@@ -39,7 +49,16 @@ class PipelineResult(TypedDict):
     debunked: list[DebunkedReport]
 
 
-pipeline_store: PipelineResult = {"incidents": [], "debunked": []}
+class PipelineState(TypedDict):
+    credible: list[RawReport]
+    incidents: list[VerifiedIncident]
+    debunked: list[DebunkedReport]
+    live_seq: int
+
+
+# In-memory store. Credible raw reports are kept so live injections can be
+# re-clustered against the existing set without re-reading the feed.
+state: PipelineState = {"credible": [], "incidents": [], "debunked": [], "live_seq": 0}
 
 
 def load_raw_reports(path: Path = DATA_FILE) -> list[RawReport]:
@@ -68,19 +87,91 @@ def run_pipeline(reports: list[RawReport]) -> PipelineResult:
     return {"incidents": incidents, "debunked": debunked}
 
 
+def reset_state() -> None:
+    """(Re)load the mock feed and rebuild the in-memory pipeline state."""
+    reports = rebase_timestamps(load_raw_reports(), now=datetime.now(timezone.utc))
+    credible, debunked = filter_reports(reports)
+    state["credible"] = credible
+    state["debunked"] = debunked
+    state["incidents"] = cluster_reports(credible)
+    state["live_seq"] = 0
+
+
+def submit_report(submission: ReportSubmission) -> SubmissionResult:
+    """Push one freshly submitted report through the full pipeline and update state."""
+    state["live_seq"] += 1
+    report = RawReport(
+        id=f"RPT-LIVE-{state['live_seq']:03d}",
+        source=submission.source,
+        author=submission.author,
+        text=submission.text,
+        event_type=submission.event_type,
+        lat=submission.lat,
+        lon=submission.lon,
+        timestamp=submission.timestamp or datetime.now(timezone.utc),
+        exif_timestamp=submission.exif_timestamp,
+        exif_lat=submission.exif_lat,
+        exif_lon=submission.exif_lon,
+        media_url=submission.media_url,
+    )
+
+    assessment = assess_report(report)
+    if not assessment.credible:
+        debunked = DebunkedReport(
+            id=report.id,
+            source=report.source,
+            author=report.author,
+            text=report.text,
+            event_type=report.event_type,
+            lat=report.lat,
+            lon=report.lon,
+            timestamp=report.timestamp,
+            reason_flagged=assessment.reason or "Failed credibility checks",
+            credibility_score=assessment.score,
+        )
+        state["debunked"].insert(0, debunked)  # newest first
+        return SubmissionResult(
+            verdict="debunked",
+            report_id=report.id,
+            reason_flagged=debunked.reason_flagged,
+            message=f"Debunked by AI filter — {debunked.reason_flagged}",
+        )
+
+    state["credible"].append(apply_event_type(report, assessment))
+    state["incidents"] = cluster_reports(state["credible"])
+    incident = next((i for i in state["incidents"] if report.id in i.source_ids), None)
+    if incident is None:  # defensive: a credible report always lands in a cluster
+        return SubmissionResult(
+            verdict="verified", report_id=report.id, message="Verified."
+        )
+
+    pct = round(incident.confidence_score * 100)
+    if incident.report_count > 1:
+        message = (
+            f"Verified — merged into {incident.id} "
+            f"({incident.report_count} sources, {pct}% confidence)"
+        )
+    else:
+        message = f"Verified — new incident {incident.id} created ({pct}% confidence)"
+    return SubmissionResult(
+        verdict="verified",
+        report_id=report.id,
+        incident_id=incident.id,
+        confidence_score=incident.confidence_score,
+        message=message,
+    )
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    reports = rebase_timestamps(load_raw_reports(), now=datetime.now(timezone.utc))
-    result = run_pipeline(reports)
-    pipeline_store["incidents"] = result["incidents"]
-    pipeline_store["debunked"] = result["debunked"]
+    reset_state()
     yield
 
 
 app = FastAPI(
     title="VOSTbw OSINT Dashboard API",
     description="Automated OSINT verification for VOST Baden-Württemberg — Konstanz demo.",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -96,21 +187,38 @@ app.add_middleware(
 @app.get("/api/incidents", response_model=list[VerifiedIncident])
 def get_incidents() -> list[VerifiedIncident]:
     """Verified, geo-clustered incidents for the live map."""
-    return pipeline_store["incidents"]
+    return state["incidents"]
 
 
 @app.get("/api/debunked", response_model=list[DebunkedReport])
 def get_debunked() -> list[DebunkedReport]:
     """Reports rejected by the credibility filter ('Disinformation Caught')."""
-    return pipeline_store["debunked"]
+    return state["debunked"]
+
+
+@app.post("/api/reports", response_model=SubmissionResult)
+def post_report(submission: ReportSubmission) -> SubmissionResult:
+    """Inject a live report (demo) and run it through the full pipeline."""
+    return submit_report(submission)
+
+
+@app.post("/api/reset")
+def post_reset() -> dict[str, str | int]:
+    """Restore the initial mock state (so the demo can be repeated)."""
+    reset_state()
+    return {
+        "status": "reset",
+        "incidents": len(state["incidents"]),
+        "debunked": len(state["debunked"]),
+    }
 
 
 @app.get("/api/health")
 def health() -> dict[str, str | int]:
-    """Liveness + pipeline stats; `ai_mode` flips once an API key is dropped in."""
+    """Liveness + pipeline stats; `ai_mode` is `mock`, `live-ready`, or `live`."""
     return {
         "status": "ok",
-        "incidents": len(pipeline_store["incidents"]),
-        "debunked": len(pipeline_store["debunked"]),
-        "ai_mode": "live-ready" if LIVE_AI_READY else "mock",
+        "incidents": len(state["incidents"]),
+        "debunked": len(state["debunked"]),
+        "ai_mode": ai_mode(),
     }
