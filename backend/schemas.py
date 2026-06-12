@@ -3,10 +3,14 @@
 Data flow:
     mock_data.json -> RawReport -> credibility filter -> credible | DebunkedReport
                                    geo clustering     -> VerifiedIncident
+
+Live injection (demo / future ingestion):
+    ReportSubmission -> pipeline -> SubmissionResult
 """
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -34,6 +38,17 @@ class RawReport(BaseModel):
     media_url: str | None = None
 
 
+class SourceReport(BaseModel):
+    """Compact view of one corroborating raw report, embedded in an incident
+    so the dashboard can show a per-incident source timeline."""
+
+    id: str
+    source: str
+    author: str
+    text: str
+    timestamp: datetime
+
+
 class VerifiedIncident(BaseModel):
     """A cluster of mutually corroborating reports promoted to a live incident."""
 
@@ -47,6 +62,11 @@ class VerifiedIncident(BaseModel):
     first_seen: datetime
     last_seen: datetime
     summary: str
+    severity: Literal["high", "moderate", "low"]
+    action_hint: str = Field(description="Concise recommended responder action")
+    sources: list[SourceReport] = Field(
+        default_factory=list, description="Corroborating reports, chronological"
+    )
 
 
 class DebunkedReport(BaseModel):
@@ -63,3 +83,34 @@ class DebunkedReport(BaseModel):
     timestamp: datetime
     reason_flagged: str
     credibility_score: float = Field(ge=0.0, le=1.0)
+
+
+class ReportSubmission(BaseModel):
+    """An incoming live report (demo injection now, real ingestion in Step 6).
+
+    Mirrors RawReport but the server assigns the `id` and defaults `timestamp`
+    to 'now', so a new post can be pushed through the full pipeline on demand.
+    """
+
+    source: str = "live"
+    author: str
+    text: str
+    event_type: str
+    lat: float = Field(ge=-90.0, le=90.0)
+    lon: float = Field(ge=-180.0, le=180.0)
+    timestamp: datetime | None = None
+    exif_timestamp: datetime | None = None
+    exif_lat: float | None = None
+    exif_lon: float | None = None
+    media_url: str | None = None
+
+
+class SubmissionResult(BaseModel):
+    """What the pipeline decided about a freshly submitted report."""
+
+    verdict: Literal["verified", "debunked"]
+    report_id: str
+    message: str
+    incident_id: str | None = None
+    confidence_score: float | None = None
+    reason_flagged: str | None = None

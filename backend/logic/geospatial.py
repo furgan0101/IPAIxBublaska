@@ -12,7 +12,8 @@ from statistics import fmean
 
 from geopy.distance import geodesic
 
-from schemas import RawReport, VerifiedIncident
+from logic.guidance import action_hint, severity_for
+from schemas import RawReport, SourceReport, VerifiedIncident
 
 RADIUS_KM: float = 1.0
 TIME_WINDOW: timedelta = timedelta(minutes=60)
@@ -67,18 +68,34 @@ def cluster_reports(
     incidents: list[VerifiedIncident] = []
     for index, cluster in enumerate(clusters, start=1):
         lat, lon = _centroid(cluster)
+        ordered = sorted(cluster, key=lambda r: r.timestamp)
+        count = len(cluster)
+        confidence = _confidence(count)
+        event_type = cluster[0].event_type
         incidents.append(
             VerifiedIncident(
                 id=f"INC-{index:03d}",
-                event_type=cluster[0].event_type,
+                event_type=event_type,
                 lat=round(lat, 6),
                 lon=round(lon, 6),
-                confidence_score=_confidence(len(cluster)),
-                source_ids=[r.id for r in cluster],
-                report_count=len(cluster),
-                first_seen=min(r.timestamp for r in cluster),
-                last_seen=max(r.timestamp for r in cluster),
+                confidence_score=confidence,
+                source_ids=[r.id for r in ordered],
+                report_count=count,
+                first_seen=ordered[0].timestamp,
+                last_seen=ordered[-1].timestamp,
                 summary=_summarise(cluster),
+                severity=severity_for(event_type),
+                action_hint=action_hint(event_type, count, confidence),
+                sources=[
+                    SourceReport(
+                        id=r.id,
+                        source=r.source,
+                        author=r.author,
+                        text=r.text,
+                        timestamp=r.timestamp,
+                    )
+                    for r in ordered
+                ],
             )
         )
     return incidents

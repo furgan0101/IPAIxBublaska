@@ -1,4 +1,4 @@
-/** Small display helpers shared by the map and the sidebar. */
+/** Small display helpers shared across the dashboard. */
 
 export function timeAgo(iso: string): string {
   const deltaMs = Date.now() - new Date(iso).getTime();
@@ -15,4 +15,8 @@ export function confidencePercent(score: number): string {
 
 export function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+export function formatUtcTime(date: Date): string {
+  return date.toISOString().slice(11, 19);
 }
