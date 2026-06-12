@@ -32,15 +32,15 @@ _RULES_SPEC: tuple[tuple[str, str], ...] = (
     ("evacuation", r"evakuier|r[äa]umung|bombenfund|fliegerbombe|blindg[äa]nger|evacuat"),
     # Natural hazards
     ("wildfire", r"waldbrand|vegetationsbrand|fl[äa]chenbrand|wildfire|forest fire"),
-    ("flood", r"hochwasser|[üu]berflut|[üu]berschwemm|sturmflut|land unter|dammbruch|deichbruch|pegel\w* steigt|keller\w* voll|vollgelaufene? keller|\bflood"),
+    ("flood", r"hochwasser|[üu]berflut|[üu]berschwemm|sturmflut|land unter|dammbruch|deichbruch|pegel\w* steigt|keller\w* voll|vollgelaufene? keller|\bflood|geflutet|\bflut\b|unter wasser"),
     ("earthquake", r"erdbeben|earthquake|seismisch"),
     ("heatwave", r"hitzewelle|hitzewarnung|extreme hitze|heat ?wave"),
     ("cold_spell", r"k[äa]ltewelle|glatteis|blitzeis|eisregen|strenger frost|cold snap|black ice"),
-    ("storm", r"\bsturm|orkan|unwetter|gewitter|\bhagel|starkregen|windb[öo]en?|tornado|umgest[üu]rzt|entwurzelt|baum.{0,60}(?:gest[üu]rzt|umgeworfen|blockiert)|b[äa]ume.{0,60}(?:gest[üu]rzt|umgeworfen)|\bb[öo]en\b|\bstorm\b|hurricane"),
+    ("storm", r"\bsturm|orkan|unwetter|gewitter|\bhagel|starkregen|windb[öo]en?|tornado|umgest[üu]rzt|entwurzelt|baum.{0,60}(?:gest[üu]rzt|umgeworfen|blockiert)|b[äa]ume.{0,60}(?:gest[üu]rzt|umgeworfen)|\bb[öo]en\b|\bstorm\b|hurricane|blaulicht|rettungskr[äa]fte|\beinsatz\b"),
     # Technological / industrial
     ("explosion", r"explosion|explodiert|detonation|verpuffung"),
-    ("fire", r"\bbrand|brand\b|brennt|brennen(?:des|der)?\b|dachstuhl|rauchentwicklung|rauchs[äa]ule|flammen|\bfeuer\b|giftwolke|\bfire\b|smoke (?:column|plume)"),
-    ("accident", r"verkehrsunfall|zugungl[üu]ck|zugkollision|flugzeugabsturz|massenkarambolage|zusammenstoß|zusammenstoss|\bunfall|unfall\b|karambolage|car crash|train crash|\baccident\b"),
+    ("fire", r"\bbrand|brand\b|brennt|brennen(?:des|der)?\b|dachstuhl|rauchentwicklung|rauchs[äa]ule|flammen|\bfeuer\b|giftwolke|\bfire\b|smoke (?:column|plume)|feuerwehreinsatz"),
+    ("accident", r"verkehrsunfall|zugungl[üu]ck|zugkollision|flugzeugabsturz|massenkarambolage|zusammenstoß|zusammenstoss|\bunfall|unfall\b|karambolage|car crash|train crash|\baccident\b|schwerverletzt|leichtverletzt|\bverletzt\b"),
     # Supply / infrastructure crises
     ("power_outage", r"stromausfall|\bblackout\b|ohne strom|stromnetz\w* ausgefallen|power (?:outage|cut)"),
     ("telecom_failure", r"mobilfunkausfall|telefonnetz gest[öo]rt|notruf\w*\s+(?:gest[öo]rt|ausgefallen)|telecom failure"),

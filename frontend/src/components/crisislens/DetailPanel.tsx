@@ -225,7 +225,8 @@ function PanelContent({
                 <li key={evidence.title}>
                   <a
                     href={evidence.href}
-                    onClick={(e) => e.preventDefault()}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="group flex items-center gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:bg-muted/60"
                   >
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">

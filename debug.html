@@ -42,6 +42,9 @@
   .cred-low     { color: #f87171; }
 
   .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 300px; }
+  a.src-link { color: #7dd3fc; text-decoration: none; }
+  a.src-link:hover { text-decoration: underline; }
+  .src-list { display: flex; flex-direction: column; gap: 2px; }
   #status { font-size: 11px; color: #555; margin-top: 16px; }
   #status.ok  { color: #4ade80; }
   #status.err { color: #f87171; }
@@ -80,10 +83,10 @@
     <thead>
       <tr>
         <th>ID</th><th>Event type</th><th>Credibility</th><th>Author</th>
-        <th>Source</th><th>Lat / Lon</th><th>Reason flagged</th><th>Text</th>
+        <th>Source</th><th>Link</th><th>Lat / Lon</th><th>Reason flagged</th><th>Text</th>
       </tr>
     </thead>
-    <tbody id="debunked-body"><tr><td colspan="8">loading...</td></tr></tbody>
+    <tbody id="debunked-body"><tr><td colspan="9">loading...</td></tr></tbody>
   </table>
 </div>
 
@@ -132,16 +135,24 @@ async function refresh() {
     document.getElementById('inc-count').textContent = incidents.length;
     document.getElementById('incidents-body').innerHTML = incidents.length === 0
       ? '<tr><td colspan="8">no incidents</td></tr>'
-      : incidents.map(i => `<tr>
+      : incidents.map(i => {
+          const srcLinks = (i.sources || []).map(s => {
+            const label = `${s.author} (${s.source})`;
+            return s.url
+              ? `<a class="src-link" href="${s.url}" target="_blank" rel="noopener">${label} ↗</a>`
+              : `<span>${label}</span>`;
+          }).join('');
+          return `<tr>
           ${td(i.id)}
           ${td(i.event_type)}
           ${td(`<b>${i.severity}</b>`, sevClass(i.severity))}
           ${td(pct(i.confidence_score))}
-          ${td(i.report_count + ' (' + (i.source_ids || []).join(', ') + ')')}
+          ${td(`<div class="src-list">${srcLinks}</div>`)}
           ${td(`${i.lat.toFixed(4)}, ${i.lon.toFixed(4)}`)}
           ${td(`<span class="truncate" title="${i.summary}">${trunc(i.summary)}</span>`)}
           ${td(`<span class="truncate" title="${i.action_hint}">${trunc(i.action_hint)}</span>`)}
-        </tr>`).join('');
+        </tr>`;
+        }).join('');
 
     // Debunked
     document.getElementById('deb-count').textContent = debunked.length;
@@ -153,6 +164,7 @@ async function refresh() {
           ${td(pct(d.credibility_score), credClass(d.credibility_score))}
           ${td(d.author)}
           ${td(d.source)}
+          ${td(d.url ? `<a class="src-link" href="${d.url}" target="_blank" rel="noopener">open ↗</a>` : '—')}
           ${td(`${d.lat.toFixed(4)}, ${d.lon.toFixed(4)}`)}
           ${td(`<span class="truncate" title="${d.reason_flagged}">${trunc(d.reason_flagged)}</span>`)}
           ${td(`<span class="truncate" title="${d.text}">${trunc(d.text)}</span>`)}

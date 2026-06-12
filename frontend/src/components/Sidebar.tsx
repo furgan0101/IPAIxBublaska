@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock, Radio, ShieldX, Users } from "lucide-react";
+import { Clock, ExternalLink, Radio, ShieldX, Users } from "lucide-react";
 
 import IncidentDetail from "@/components/IncidentDetail";
 import { EventIcon, eventMeta } from "@/lib/eventMeta";
@@ -223,6 +223,18 @@ export default function Sidebar({
                     <span className="ml-auto shrink-0 font-mono text-[11px] uppercase text-slate-500">
                       {report.source} · {timeAgo(report.timestamp)}
                     </span>
+                    {report.url && (
+                      <a
+                        href={report.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="shrink-0 text-slate-500 transition-colors hover:text-amber-400"
+                        aria-label="View original post"
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    )}
                   </div>
 
                   <p className="mt-2 line-clamp-3 text-xs italic text-slate-400">

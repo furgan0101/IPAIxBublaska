@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Clock, Crosshair, Radius, Users } from "lucide-react";
+import { ArrowLeft, Clock, Crosshair, ExternalLink, Radius, Users } from "lucide-react";
 
 import ConfidenceGauge from "@/components/ConfidenceGauge";
 import { EventIcon, eventMeta } from "@/lib/eventMeta";
@@ -138,6 +138,17 @@ export default function IncidentDetail({
                   <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-500">
                     {timeAgo(source.timestamp)}
                   </span>
+                  {source.url && (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 text-slate-600 transition-colors hover:text-red-400"
+                      aria-label="View original source"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  )}
                 </div>
                 <p className="mt-1 text-[11px] leading-snug text-slate-400">
                   {source.text}

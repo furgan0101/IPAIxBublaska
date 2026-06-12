@@ -263,11 +263,8 @@ class IngestionService:
                 return None, "unlocated"
             lat, lon = coords
 
-        distance_km = geodesic(
-            (lat, lon), (self._settings.sector_lat, self._settings.sector_lon)
-        ).kilometers
-        if distance_km > self._settings.sector_radius_km:
-            return None, "off_sector"
+        # Geo-filter removed: road names and district references in press
+        # releases were incorrectly triggering off_sector drops.
 
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:8].upper()
         prefix = ID_PREFIXES.get(item.source, "LIVE")
