@@ -1,21 +1,35 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
-import { Activity, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Activity, PanelLeftClose, PanelLeftOpen, RotateCcw } from "lucide-react";
 
 import {
   MOCK_REPORTS,
   STATUS_META,
   type CrisisReport,
+  type RiskLevel,
 } from "@/lib/mockReports";
 import { adaptAll } from "@/lib/liveAdapter";
+import { firstSignalAt } from "@/lib/mediaResponse";
+import {
+  MEASURE_KINDS,
+  newMeasureId,
+  useCityMeasures,
+  type MeasureKind,
+  type PlacedMeasure,
+} from "@/lib/measures";
 import { useDashboard } from "@/hooks/useDashboard";
 import { timeAgo } from "@/lib/format";
+import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
 import TagFilter from "./TagFilter";
+import CityFocusPicker from "./CityFocusPicker";
+import CommandBanner from "./CommandBanner";
+import CommandConsole from "./CommandConsole";
+import MeasurePalette from "./MeasurePalette";
 
 // Leaflet touches `window` — load the map strictly client-side.
 const CrisisMap = dynamic(() => import("./CrisisMap"), {
@@ -61,8 +75,10 @@ interface DashboardProps {
 /** Main command-center view: map, stats, signal feed and report dossier. */
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [focusCity, setFocusCity] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, health, online } = useDashboard();
@@ -106,28 +122,152 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     [reports, selectedId],
   );
 
+  // Command Mode scopes the entire dashboard — stats, feed, map — to one city.
+  const scopedReports = useMemo(
+    () =>
+      focusCity ? reports.filter((r) => r.city === focusCity) : reports,
+    [reports, focusCity],
+  );
+
+  // Leave Command Mode automatically if the city drops off the board
+  // (live feeds can age incidents out between polls).
+  useEffect(() => {
+    if (focusCity && !reports.some((r) => r.city === focusCity)) {
+      setFocusCity(null);
+    }
+  }, [focusCity, reports]);
+
+  const cityFocus = useMemo<MapFocus | null>(() => {
+    if (!focusCity || scopedReports.length === 0) return null;
+    const lat =
+      scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
+      scopedReports.length;
+    const lon =
+      scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
+      scopedReports.length;
+    return { center: [lat, lon], zoom: 12 };
+  }, [focusCity, scopedReports]);
+
+  const firstSignal = useMemo(
+    () => (focusCity ? firstSignalAt(scopedReports) : null),
+    [focusCity, scopedReports],
+  );
+
+  const highestRisk = useMemo<RiskLevel | null>(() => {
+    if (scopedReports.length === 0) return null;
+    if (scopedReports.some((r) => r.riskLevel === "High")) return "High";
+    if (scopedReports.some((r) => r.riskLevel === "Moderate")) return "Moderate";
+    return "Low";
+  }, [scopedReports]);
+
+  // ----------------------------------------------------- measures layer
+  const [measures, updateMeasures] = useCityMeasures(focusCity);
+  const [armedTool, setArmedTool] = useState<MeasureKind | null>(null);
+  const [selectedMeasureId, setSelectedMeasureId] = useState<string | null>(null);
+  const [hoveredMeasureId, setHoveredMeasureId] = useState<string | null>(null);
+
+  const placeMeasure = useCallback(
+    (position: [number, number]): void => {
+      // Read the armed tool via the setter so the callback stays stable.
+      setArmedTool((kind) => {
+        if (!kind) return null;
+        const meta = MEASURE_KINDS[kind];
+        const id = newMeasureId();
+        updateMeasures((prev) => [
+          ...prev,
+          {
+            id,
+            kind,
+            label: meta.labelDe,
+            note: "",
+            status: "planned",
+            position,
+            ...(kind === "zone" ? { radiusM: meta.defaultRadiusM ?? 500 } : {}),
+            createdAt: new Date().toISOString(),
+          },
+        ]);
+        setSelectedId(null);
+        setSelectedMeasureId(id);
+        return null; // single-drop semantics: disarm after placing
+      });
+    },
+    [updateMeasures],
+  );
+
+  const updateMeasure = useCallback(
+    (id: string, patch: Partial<PlacedMeasure>): void => {
+      updateMeasures((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, ...patch } : m)),
+      );
+    },
+    [updateMeasures],
+  );
+
+  const removeMeasure = useCallback(
+    (id: string): void => {
+      updateMeasures((prev) => prev.filter((m) => m.id !== id));
+      setSelectedMeasureId((current) => (current === id ? null : current));
+    },
+    [updateMeasures],
+  );
+
+  const clearMeasures = useCallback((): void => {
+    updateMeasures(() => []);
+    setSelectedMeasureId(null);
+  }, [updateMeasures]);
+
+  // The dossier and the measure editor are mutually exclusive selections.
+  const selectMeasure = useCallback((id: string | null): void => {
+    if (id) setSelectedId(null);
+    setSelectedMeasureId(id);
+  }, []);
+
+  const selectIncident = useCallback((id: string): void => {
+    setSelectedMeasureId(null);
+    setSelectedId(id);
+  }, []);
+
+  const enterCommandMode = (city: string): void => {
+    setSelectedId(null);
+    setSelectedMeasureId(null);
+    setArmedTool(null);
+    setFocusCity(city);
+  };
+
+  const exitCommandMode = (): void => {
+    setSelectedId(null);
+    setSelectedMeasureId(null);
+    setArmedTool(null);
+    setFocusCity(null);
+  };
+
   // "Last analysis" reflects actual data refreshes from the poll loop.
   useEffect(() => {
     setLastAnalysis(new Date());
   }, [reports]);
 
-  // Escape resets the view, mirroring the Reset View button.
+  // Escape peels back one layer at a time: armed tool → measure selection →
+  // dossier → Command Mode.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") setSelectedId(null);
+      if (e.key !== "Escape") return;
+      if (armedTool) setArmedTool(null);
+      else if (selectedMeasureId) setSelectedMeasureId(null);
+      else if (selectedId) setSelectedId(null);
+      else if (focusCity) setFocusCity(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [armedTool, selectedMeasureId, selectedId, focusCity]);
 
 
   const feed = useMemo(
     () =>
-      [...reports].sort(
+      [...scopedReports].sort(
         (a, b) =>
           new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
       ),
-    [reports],
+    [scopedReports],
   );
 
   const modeMeta = MODE_META[mode];
@@ -155,6 +295,10 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </span>
 
         <div className="ml-auto flex items-center gap-3">
+          {!focusCity && (
+            <CityFocusPicker reports={reports} onFocus={enterCommandMode} />
+          )}
+
           <span
             className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
             title="Data source: live backend pipeline vs. bundled demo dataset"
@@ -199,18 +343,40 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             </button>
           )}
 
+          <button
+            type="button"
+            onClick={() => setFeedOpen((o) => !o)}
+            title={feedOpen ? "Collapse signals feed" : "Expand signals feed"}
+            className="hidden rounded-md border border-border bg-card p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:block"
+          >
+            {feedOpen
+              ? <PanelLeftClose className="h-4 w-4" />
+              : <PanelLeftOpen className="h-4 w-4" />
+            }
+          </button>
+
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </header>
 
+      {/* -------------------------------------------- command mode banner */}
+      {focusCity && (
+        <CommandBanner
+          city={focusCity}
+          firstSignal={firstSignal}
+          reportCount={scopedReports.length}
+          highestRisk={highestRisk}
+          onExit={exitCommandMode}
+        />
+      )}
 
       {/* ----------------------------------------------------- main row */}
       <div className="flex min-h-0 flex-1">
-        {/* Latest signals rail — collapses away when a node is selected. */}
+        {/* Latest signals rail — collapses away when a node is selected or user toggles. */}
         <aside
           className="hidden shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out lg:block"
-          style={{ width: selected ? 0 : 300 }}
-          aria-hidden={Boolean(selected)}
+          style={{ width: selected || !feedOpen ? 0 : 300 }}
+          aria-hidden={Boolean(selected) || !feedOpen}
         >
           <div className="flex h-full w-[300px] flex-col border-r border-border bg-background">
           <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
@@ -239,7 +405,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                     <li key={report.id}>
                       <button
                         type="button"
-                        onClick={() => setSelectedId(report.id)}
+                        onClick={() => selectIncident(report.id)}
                         className={`w-full rounded-lg border p-3.5 text-left transition-colors ${
                           isSelected
                             ? "border-gold bg-muted"
@@ -283,10 +449,20 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         {/* Map column */}
         <main className="relative min-w-0 flex-1">
           <CrisisMap
-            reports={reports}
+            reports={scopedReports}
             selectedId={selectedId}
-            onSelect={setSelectedId}
+            onSelect={selectIncident}
             theme={theme}
+            focus={cityFocus}
+            measures={focusCity ? measures : []}
+            armedTool={armedTool}
+            selectedMeasureId={selectedMeasureId}
+            hoveredMeasureId={hoveredMeasureId}
+            onPlaceMeasure={placeMeasure}
+            onSelectMeasure={selectMeasure}
+            onHoverMeasure={setHoveredMeasureId}
+            onMoveMeasure={(id, position) => updateMeasure(id, { position })}
+            onResizeZone={(id, radiusM) => updateMeasure(id, { radiusM })}
           />
 
           {/* Tag filter */}
@@ -295,6 +471,11 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             active={activeTag}
             onChange={setActiveTag}
           />
+
+          {/* Measure palette — the editable tactical layer (Command Mode). */}
+          {focusCity && !selected && (
+            <MeasurePalette armed={armedTool} onArm={setArmedTool} />
+          )}
 
           {/* Triage legend */}
           <div className="pointer-events-none absolute bottom-4 left-4 z-[1000] rounded-lg border border-border bg-card/95 px-4 py-3 shadow-sm">
@@ -319,6 +500,32 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             </ul>
           </div>
         </main>
+
+        {/* Command console — LISTEN + RESPOND for the focused city. It
+            collapses like the signals rail when the dossier takes over. */}
+        {focusCity && (
+          <aside
+            className="hidden shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out md:block"
+            style={{ width: selected ? 0 : 420 }}
+            aria-hidden={Boolean(selected)}
+          >
+            <div className="h-full w-[420px] border-l border-border">
+              <CommandConsole
+                city={focusCity}
+                reports={scopedReports}
+                measures={measures}
+                origin={cityFocus?.center ?? null}
+                selectedMeasureId={selectedMeasureId}
+                hoveredMeasureId={hoveredMeasureId}
+                onSelectMeasure={selectMeasure}
+                onHoverMeasure={setHoveredMeasureId}
+                onUpdateMeasure={updateMeasure}
+                onRemoveMeasure={removeMeasure}
+                onClearMeasures={clearMeasures}
+              />
+            </div>
+          </aside>
+        )}
 
         {/* Report dossier */}
         <DetailPanel report={selected} onClose={() => setSelectedId(null)} />
