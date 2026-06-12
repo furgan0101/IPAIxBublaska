@@ -36,6 +36,7 @@ mock_data.json ──> ingestion ──> AI credibility filter ──> geo-clust
 Then open **http://localhost:3000**.
 
 ### Individual servers (fallback)
+
 ```
 cd backend && python -m uvicorn main:app --reload --port 8000
 ```
@@ -49,6 +50,21 @@ cd frontend && npm run dev
 ```
 npm run test:api
 ```
+
+### Force a fresh AI run (clear the live-feed cache)
+
+In live mode (`FEEDS_ENABLED=true`) every fetched report is deduped against the
+SQLite cache (`backend/data/livefeeds.db`), so already-seen items never hit the
+LLM again. To wipe that cache and re-analyse everything from scratch:
+
+```
+npm run reset:feeds
+```
+
+This calls `POST /api/reset` (re-polls all feeds) when the backend is up, or
+deletes the SQLite cache for a cold start when it is down. With `LLM_VERBOSE=true`
+(default) the server console then prints the full request + raw response for every
+gateway call.
 
 ## URLs
 
@@ -98,7 +114,11 @@ Mock mode is the default: **zero external calls**. To enable the live LLM analys
 2. Set `LITELLM_API_KEY=<your key>` and `USE_LIVE_AI=true` (optionally `USE_VISION=true` for image-plausibility analysis)
 3. Restart the backend — `GET /api/health` now reports `"ai_mode": "live"` (`live-ready` = key present but toggle off)
 
-Behaviour in live mode: the deterministic heuristics (bot-spam / stale-EXIF / geotag drift) still run **first**; reports that pass are then judged by the LLM for tone, specificity and plausibility, and its extracted `event_type` refines classification before clustering. Infra failures degrade gracefully back to heuristics; unparseable model output is flagged as `AI Parsing Error`. Model: `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`, 20 s request timeout.
+Behaviour in live mode: the deterministic heuristics (bot-spam / stale-EXIF / geotag drift) still run **first**; reports that pass are then judged by the LLM for tone, specificity and plausibility, returning a verdict **with a 1–2 sentence rationale**, and its extracted `event_type` refines classification before clustering. With `USE_VISION=true` the attached image (or a video's preview frame) is **downloaded and sent as a base64 data URI** — the gateway blocks remote image URLs — and the model adds a `media_consistency` note (does the imagery match the claim?). Multiple keys in `LITELLM_API_KEYS` are rotated on quota errors. Infra failures degrade gracefully back to heuristics; unparseable model output is flagged as `AI Parsing Error`. Model: `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`.
+
+**Verified live (2026-06-12):** real Polizeipräsidium-Konstanz releases analyzed with genuine AI rationales, and a fake "flood" claim **debunked by vision** — *"Image shows a serene sunset scene… contradicting the claim."* The CrisisLens dashboard (`/?dashboard` deep-link skips the landing page) renders the live pipeline with a LIVE DATA badge, AI rationales, analyzed-media thumbnails and outbound source links; it falls back to the bundled mock dataset automatically when the API is offline.
+
+![CrisisLens live](docs/crisislens-live.png)
 
 One-call live smoke test (after setting the env vars):
 

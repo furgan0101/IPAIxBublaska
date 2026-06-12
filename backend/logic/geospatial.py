@@ -42,6 +42,13 @@ def _confidence(report_count: int) -> float:
     return round(min(0.50 + 0.12 * report_count, 0.97), 2)
 
 
+def _mean_ai_credibility(cluster: list[RawReport]) -> float | None:
+    """Mean of the members' AI-analyst credibility scores, or None when no
+    member carries one (mock / heuristic-only mode)."""
+    scores = [r.ai_credibility for r in cluster if r.ai_credibility is not None]
+    return round(fmean(scores), 2) if scores else None
+
+
 def _summarise(cluster: list[RawReport]) -> str:
     sources = sorted({r.source for r in cluster})
     return (
@@ -79,6 +86,7 @@ def cluster_reports(
                 lat=round(lat, 6),
                 lon=round(lon, 6),
                 confidence_score=confidence,
+                ai_credibility=_mean_ai_credibility(cluster),
                 source_ids=[r.id for r in ordered],
                 report_count=count,
                 first_seen=ordered[0].timestamp,
@@ -94,6 +102,10 @@ def cluster_reports(
                         text=r.text,
                         timestamp=r.timestamp,
                         url=r.url,
+                        media_preview=r.first_media_preview(),
+                        ai_rationale=r.ai_rationale,
+                        ai_media_note=r.ai_media_note,
+                        ai_credibility=r.ai_credibility,
                     )
                     for r in ordered
                 ],

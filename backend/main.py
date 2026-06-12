@@ -53,7 +53,13 @@ logging.getLogger("vost.verification").setLevel(logging.DEBUG)
 
 from ingestion import IngestionService, IngestionSettings, default_connectors
 from logic.geospatial import cluster_reports
-from logic.verification import ai_mode, apply_event_type, assess_report, filter_reports
+from logic.verification import (
+    ai_mode,
+    annotate_report,
+    assess_report,
+    budget_status,
+    filter_reports,
+)
 from schemas import (
     DebunkedReport,
     RawReport,
@@ -68,7 +74,6 @@ DATA_FILE: Path = Path(__file__).parent / "mock_data.json"
 ALLOWED_ORIGINS: list[str] = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "null",  # file:// origin for debug.html opened directly in the browser
 ]
 
 
@@ -159,6 +164,7 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
     )
 
     assessment = assess_report(report)
+    report = annotate_report(report, assessment)
     if not assessment.credible:
         debunked = DebunkedReport(
             id=report.id,
@@ -171,6 +177,9 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
             timestamp=report.timestamp,
             reason_flagged=assessment.reason or "Failed credibility checks",
             credibility_score=assessment.score,
+            rationale=report.ai_rationale,
+            media_consistency=report.ai_media_note,
+            media_preview=assessment.analyzed_media or report.first_media_preview(),
         )
         state["debunked"].insert(0, debunked)  # newest first
         if ingestion_service is not None:
@@ -182,10 +191,9 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
             message=f"Debunked by AI filter — {debunked.reason_flagged}",
         )
 
-    verified = apply_event_type(report, assessment)
     if ingestion_service is not None:
-        ingestion_service.persist_manual(verified, assessment)
-    state["credible"].append(verified)
+        ingestion_service.persist_manual(report, assessment)
+    state["credible"].append(report)
     state["incidents"] = cluster_reports(state["credible"])
     incident = next((i for i in state["incidents"] if report.id in i.source_ids), None)
     if incident is None:  # defensive: a credible report always lands in a cluster
@@ -303,6 +311,7 @@ def health() -> dict[str, object]:
         "debunked": len(state["debunked"]),
         "ai_mode": ai_mode(),
         "data_mode": "live" if ingestion_service is not None else "mock",
+        **budget_status(),
     }
     if ingestion_service is not None:
         payload["feeds"] = ingestion_service.status()

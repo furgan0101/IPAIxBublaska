@@ -36,10 +36,10 @@ _RULES_SPEC: tuple[tuple[str, str], ...] = (
     ("earthquake", r"erdbeben|earthquake|seismisch"),
     ("heatwave", r"hitzewelle|hitzewarnung|extreme hitze|heat ?wave"),
     ("cold_spell", r"k[äa]ltewelle|glatteis|blitzeis|eisregen|strenger frost|cold snap|black ice"),
-    ("storm", r"\bsturm|orkan|unwetter|gewitter|\bhagel|starkregen|windb[öo]en?|tornado|umgest[üu]rzt|entwurzelt|baum.{0,60}(?:gest[üu]rzt|umgeworfen|blockiert)|b[äa]ume.{0,60}(?:gest[üu]rzt|umgeworfen)|\bb[öo]en\b|\bstorm\b|hurricane|blaulicht|rettungskr[äa]fte|\beinsatz\b"),
+    ("storm", r"\bsturm|orkan|unwetter|gewitter|\bhagel|starkregen|windb[öo]en?|tornado|umgest[üu]rzt|entwurzelt|baum.{0,60}(?:gest[üu]rzt|umgeworfen|blockiert)|b[äa]ume.{0,60}(?:gest[üu]rzt|umgeworfen)|\bb[öo]en\b|\bstorm\b|hurricane|blaulicht|rettungskr[äa]fte"),
     # Technological / industrial
     ("explosion", r"explosion|explodiert|detonation|verpuffung"),
-    ("fire", r"\bbrand|brand\b|brennt|brennen(?:des|der)?\b|dachstuhl|rauchentwicklung|rauchs[äa]ule|flammen|\bfeuer\b|giftwolke|\bfire\b|smoke (?:column|plume)|feuerwehreinsatz"),
+    ("fire", r"\bbrand|brand\b|brennt|brennen(?:des|der)?\b|dachstuhl|rauchentwicklung|rauchs[äa]ule|flammen|\bfeuer\b|giftwolke|\bfire\b|smoke (?:column|plume)|feuerwehr.{0,20}einsatz|feuerwehreinsatz"),
     ("accident", r"verkehrsunfall|zugungl[üu]ck|zugkollision|flugzeugabsturz|massenkarambolage|zusammenstoß|zusammenstoss|\bunfall|unfall\b|karambolage|car crash|train crash|\baccident\b|schwerverletzt|leichtverletzt|\bverletzt\b"),
     # Supply / infrastructure crises
     ("power_outage", r"stromausfall|\bblackout\b|ohne strom|stromnetz\w* ausgefallen|power (?:outage|cut)"),

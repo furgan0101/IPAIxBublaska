@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 import httpx
 
+from schemas import MediaItem
+
 _TAG_RE: re.Pattern[str] = re.compile(r"<[^>]+>")
 _WS_RE: re.Pattern[str] = re.compile(r"\s+")
 
@@ -29,6 +31,7 @@ class FetchedItem:
     event_type: str | None = None  # set when the upstream feed implies it
     media_url: str | None = None
     place_hint: str | None = None  # location string for the geocoder
+    media: tuple[MediaItem, ...] = ()  # attached media (images/videos)
 
 
 class Connector(Protocol):

@@ -21,6 +21,8 @@ export interface EvidenceLink {
   time: string;
   credibility: Credibility;
   href: string;
+  /** Live mode: thumbnail of the source's attached media. */
+  mediaPreview?: string | null;
 }
 
 export interface ConfidenceBreakdown {
@@ -53,6 +55,12 @@ export interface CrisisReport {
   signalSnippet: string;
   /** Attribution line for the snippet. */
   signalSource: string;
+  /** Live mode: thumbnails of the media the AI analyzed. */
+  mediaPreviews?: string[];
+  /** Live mode: AI note on whether the media matches the claim. */
+  mediaConsistency?: string | null;
+  /** Live mode: link to the original post/release. */
+  externalUrl?: string | null;
 }
 
 export const STATUS_META: Record<

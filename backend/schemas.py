@@ -1,8 +1,8 @@
 """Pydantic schemas for the VOSTbw OSINT pipeline.
 
 Data flow:
-    mock_data.json -> RawReport -> credibility filter -> credible | DebunkedReport
-                                   geo clustering     -> VerifiedIncident
+    feed/mock -> RawReport -> credibility filter -> credible | DebunkedReport
+                              geo clustering     -> VerifiedIncident
 
 Live injection (demo / future ingestion):
     ReportSubmission -> pipeline -> SubmissionResult
@@ -13,6 +13,17 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+
+_IMAGE_SUFFIXES: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+
+
+class MediaItem(BaseModel):
+    """One piece of media attached to a report. Videos are judged via their
+    preview frame (the gateway has no native video understanding)."""
+
+    url: str
+    type: Literal["image", "video", "gifv", "audio", "unknown"] = "image"
+    preview_url: str | None = None
 
 
 class RawReport(BaseModel):
@@ -39,6 +50,34 @@ class RawReport(BaseModel):
     url: str | None = Field(
         default=None, description="Link to the original post/release (live feeds)"
     )
+    media: list[MediaItem] = Field(
+        default_factory=list, description="Attached media (live feeds)"
+    )
+    ai_rationale: str | None = Field(
+        default=None, description="AI analyst's 1–2 sentence verdict justification"
+    )
+    ai_media_note: str | None = Field(
+        default=None, description="AI note: does the media match the claim?"
+    )
+    ai_credibility: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="AI analyst's own 0-1 credibility score (live AI mode only)",
+    )
+
+    def first_media_preview(self) -> str | None:
+        """Best displayable thumbnail for the UI (never a raw video URL)."""
+        for item in self.media:
+            if item.preview_url:
+                return item.preview_url
+            if item.type == "image":
+                return item.url
+        if self.media_url and self.media_url.lower().split("?")[0].endswith(
+            _IMAGE_SUFFIXES
+        ):
+            return self.media_url
+        return None
 
 
 class SourceReport(BaseModel):
@@ -51,6 +90,10 @@ class SourceReport(BaseModel):
     text: str
     timestamp: datetime
     url: str | None = None
+    media_preview: str | None = None
+    ai_rationale: str | None = None
+    ai_media_note: str | None = None
+    ai_credibility: float | None = None
 
 
 class VerifiedIncident(BaseModel):
@@ -61,6 +104,13 @@ class VerifiedIncident(BaseModel):
     lat: float = Field(description="Cluster centroid latitude")
     lon: float = Field(description="Cluster centroid longitude")
     confidence_score: float = Field(ge=0.0, le=1.0)
+    ai_credibility: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Mean AI-analyst credibility across the clustered sources "
+        "(live AI mode only); distinct from the corroboration confidence_score",
+    )
     source_ids: list[str] = Field(description="IDs of the RawReports merged into this incident")
     report_count: int = Field(ge=1)
     first_seen: datetime
@@ -88,6 +138,15 @@ class DebunkedReport(BaseModel):
     reason_flagged: str
     credibility_score: float = Field(ge=0.0, le=1.0)
     url: str | None = None
+    rationale: str | None = Field(
+        default=None, description="AI analyst's justification (live AI mode)"
+    )
+    media_consistency: str | None = Field(
+        default=None, description="AI note on whether the media matches the claim"
+    )
+    media_preview: str | None = Field(
+        default=None, description="Thumbnail of the analyzed media, if any"
+    )
 
 
 class ReportSubmission(BaseModel):

@@ -15,6 +15,7 @@ import httpx
 
 from ingestion.base import FetchedItem, get_text, html_to_text
 from ingestion.config import IngestionSettings
+from schemas import MediaItem
 
 _TITLE_LOCATION_RE: re.Pattern[str] = re.compile(r"\(([^)]{2,80})\)")
 _MAX_ITEMS_PER_FEED: int = 30
@@ -56,6 +57,7 @@ def _to_item(entry: feedparser.FeedParserDict, newsroom: str) -> FetchedItem | N
     location_match = _TITLE_LOCATION_RE.search(title)
     place_hint = location_match.group(1) if location_match else None
     text = f"{title} — {summary}"[:_MAX_TEXT_LEN] if summary else title
+    media = _extract_media(entry)
     return FetchedItem(
         source="presseportal",
         source_id=str(link),
@@ -64,4 +66,25 @@ def _to_item(entry: feedparser.FeedParserDict, newsroom: str) -> FetchedItem | N
         timestamp=timestamp,
         url=str(link),
         place_hint=place_hint,
+        media=media,
+        media_url=media[0].url if media else None,
     )
+
+
+def _extract_media(entry: feedparser.FeedParserDict) -> tuple[MediaItem, ...]:
+    """Lead image from RSS enclosures / media:content, when the feed has one."""
+    seen: set[str] = set()
+    items: list[MediaItem] = []
+    candidates: list[tuple[str | None, str | None]] = []
+    for enclosure in entry.get("enclosures") or []:
+        candidates.append((enclosure.get("href"), enclosure.get("type")))
+    for content in entry.get("media_content") or []:
+        candidates.append((content.get("url"), content.get("type") or "image"))
+    for url, mime in candidates:
+        if not url or url in seen:
+            continue
+        if mime is not None and not str(mime).lower().startswith("image"):
+            continue
+        seen.add(url)
+        items.append(MediaItem(url=str(url), type="image"))
+    return tuple(items)

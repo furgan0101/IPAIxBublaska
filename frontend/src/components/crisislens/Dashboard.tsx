@@ -4,8 +4,13 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import { Activity, RotateCcw } from "lucide-react";
 
-import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
-import { useLiveReports, type DataMode } from "@/hooks/useLiveReports";
+import {
+  MOCK_REPORTS,
+  STATUS_META,
+  type CrisisReport,
+} from "@/lib/mockReports";
+import { adaptAll } from "@/lib/liveAdapter";
+import { useDashboard } from "@/hooks/useDashboard";
 import { timeAgo } from "@/lib/format";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
@@ -21,29 +26,29 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ),
 });
 
+type DataMode = "live" | "mock" | "offline";
+
 const MODE_META: Record<
   DataMode,
-  { label: string; dot: string; chip: string }
+  { label: string; chip: string; dot: string; ping: boolean }
 > = {
   live: {
-    label: "Live data",
-    dot: "bg-emerald-500",
+    label: "Live Data",
     chip: "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    dot: "bg-emerald-500",
+    ping: true,
   },
-  "backend-demo": {
-    label: "Demo feed",
+  mock: {
+    label: "Mock Data",
+    chip: "border-gold/40 bg-gold-fill/10 text-gold",
     dot: "bg-gold-fill",
-    chip: "border-yellow-600/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+    ping: false,
   },
-  "offline-demo": {
-    label: "Demo · offline",
-    dot: "bg-muted-foreground",
-    chip: "border-border bg-muted text-muted-foreground",
-  },
-  connecting: {
-    label: "Connecting…",
-    dot: "bg-muted-foreground",
-    chip: "border-border bg-muted text-muted-foreground",
+  offline: {
+    label: "Offline Demo",
+    chip: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
+    dot: "bg-red-500",
+    ping: false,
   },
 };
 
@@ -55,19 +60,36 @@ interface DashboardProps {
 /** Main command-center view: map, stats, signal feed and report dossier. */
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { reports, mode, aiMode, lastUpdated } = useLiveReports();
+  const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
+
+  // Live backend data (FastAPI :8000) — polls every 5 s.
+  const { incidents, debunked, health, online } = useDashboard();
+
+  const mode: DataMode = !online
+    ? "offline"
+    : health?.data_mode === "live"
+      ? "live"
+      : "mock";
+
+  // Real pipeline output in live mode; the curated mock set otherwise — the
+  // dashboard always has something meaningful to show (offline judging!).
+  const reports: CrisisReport[] = useMemo(
+    () =>
+      mode === "live"
+        ? adaptAll(incidents ?? [], debunked ?? [])
+        : MOCK_REPORTS,
+    [mode, incidents, debunked],
+  );
 
   const selected = useMemo(
     () => reports.find((r) => r.id === selectedId) ?? null,
     [reports, selectedId],
   );
 
-  // Drop the selection if the polled data no longer contains it.
+  // "Last analysis" reflects actual data refreshes from the poll loop.
   useEffect(() => {
-    if (selectedId && !reports.some((r) => r.id === selectedId)) {
-      setSelectedId(null);
-    }
-  }, [reports, selectedId]);
+    setLastAnalysis(new Date());
+  }, [reports]);
 
   // Escape resets the view, mirroring the Reset View button.
   useEffect(() => {
@@ -81,11 +103,12 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const stats = useMemo(() => {
     const count = (s: CrisisReport["status"]): number =>
       reports.filter((r) => r.status === s).length;
-    const avg = reports.length
-      ? Math.round(
-          reports.reduce((sum, r) => sum + r.confidence, 0) / reports.length,
-        )
-      : 0;
+    const avg =
+      reports.length > 0
+        ? Math.round(
+            reports.reduce((sum, r) => sum + r.confidence, 0) / reports.length,
+          )
+        : 0;
     return [
       { label: "Active Reports", value: `${reports.length}`, sub: "in current window", accent: "var(--muted-foreground)" },
       { label: "Relevant Crises", value: `${count("relevant")}`, sub: "evidence-based escalation", accent: STATUS_META.relevant.color },
@@ -130,16 +153,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
         <div className="ml-auto flex items-center gap-3">
           <span
-            className={`flex items-center gap-2 rounded-full border px-3 py-1 ${modeMeta.chip}`}
-            title={
-              aiMode
-                ? `AI analyst: ${aiMode}`
-                : "Backend status unknown"
-            }
+            className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
+            title="Data source: live backend pipeline vs. bundled demo dataset"
           >
             <span className="relative flex h-2 w-2">
-              {mode === "live" && (
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+              {modeMeta.ping && (
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${modeMeta.dot}`}
+                />
               )}
               <span
                 className={`relative inline-flex h-2 w-2 rounded-full ${modeMeta.dot}`}
@@ -150,10 +171,17 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             </span>
           </span>
 
+          <span
+            className="hidden rounded-full border border-border bg-muted px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground md:block"
+            title="LLM analyst mode (LiteLLM gateway, Qwen3-VL)"
+          >
+            AI {health?.ai_mode ?? "mock"}
+          </span>
+
           <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
             Last analysis{" "}
-            <span className="text-foreground">
-              {lastUpdated ? lastUpdated.toLocaleTimeString("de-DE") : "—"}
+            <span className="text-foreground" suppressHydrationWarning>
+              {lastAnalysis ? lastAnalysis.toLocaleTimeString("de-DE") : "—"}
             </span>
           </span>
 
@@ -227,10 +255,11 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
           <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
             {feed.length === 0 ? (
-              <div className="mt-6 px-3 text-center text-xs leading-relaxed text-muted-foreground">
-                No signals in the current window. The pipeline is watching the
-                live feeds.
-              </div>
+              <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
+                No signals in the current window yet — the pipeline is polling
+                live sources. Trigger a cycle via{" "}
+                <span className="font-mono">POST /api/poll</span>.
+              </p>
             ) : (
               <ul className="space-y-2">
                 {feed.map((report) => {
@@ -274,8 +303,9 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
 
           <p className="border-t border-border px-5 py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-            AI-assisted plausibility estimates. Human review required before
-            escalation.
+            {mode === "live"
+              ? "AI-assisted plausibility on live open feeds (NINA · police RSS · Mastodon). Human review required before escalation."
+              : "AI-assisted plausibility estimates on synthetic data. Human review required before escalation."}
           </p>
           </div>
         </aside>

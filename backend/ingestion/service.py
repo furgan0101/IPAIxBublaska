@@ -36,7 +36,7 @@ from ingestion.presseportal import PresseportalConnector
 from ingestion.storage import FeedStore, StoredReport, content_hash
 from logic.geospatial import cluster_reports
 from logic.guidance import action_hint
-from logic.verification import Assessment, apply_event_type, assess_report
+from logic.verification import Assessment, annotate_report, assess_report
 from schemas import DebunkedReport, RawReport, VerifiedIncident
 
 logger = logging.getLogger("vost.ingestion")
@@ -190,8 +190,10 @@ class IngestionService:
                 # Heuristics are instant; the optional live LLM call is run in
                 # a thread so a slow gateway never blocks the event loop.
                 assessment = await asyncio.to_thread(assess_report, report)
+                # Stamp verdict context (event-type refinement, AI rationale,
+                # media-consistency note) onto the persisted report itself.
+                report = annotate_report(report, assessment)
                 if assessment.credible:
-                    report = apply_event_type(report, assessment)
                     stats["new_verified"] += 1
                 else:
                     stats["new_debunked"] += 1
@@ -246,6 +248,7 @@ class IngestionService:
         if event_type is None:
             return None, "not_crisis"
 
+        had_explicit_coords = item.lat is not None and item.lon is not None
         lat, lon = item.lat, item.lon
         if lat is None or lon is None:
             place_hint = item.place_hint
@@ -263,8 +266,12 @@ class IngestionService:
                 return None, "unlocated"
             lat, lon = coords
 
-        # Geo-filter removed: road names and district references in press
-        # releases were incorrectly triggering off_sector drops.
+        if had_explicit_coords:
+            distance_km = geodesic(
+                (lat, lon), (self._settings.sector_lat, self._settings.sector_lon)
+            ).kilometers
+            if distance_km > self._settings.sector_radius_km:
+                return None, "off_sector"
 
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:8].upper()
         prefix = ID_PREFIXES.get(item.source, "LIVE")
@@ -280,6 +287,7 @@ class IngestionService:
                 timestamp=timestamp,
                 media_url=item.media_url,
                 url=item.url,
+                media=list(item.media),
             ),
             "",
         )
@@ -384,4 +392,7 @@ def _to_debunked(entry: StoredReport) -> DebunkedReport:
         reason_flagged=entry.reason or "Failed credibility checks",
         credibility_score=entry.score,
         url=report.url,
+        rationale=report.ai_rationale,
+        media_consistency=report.ai_media_note,
+        media_preview=report.first_media_preview(),
     )

@@ -7,7 +7,7 @@ Global system prompt and operating guide for the **Automated OSINT Situational A
 ## Project Architecture
 
 ### Backend — Python / FastAPI (`backend/`)
-- **AI orchestration** — `logic/verification.py`: two-layer credibility filter. Deterministic heuristics always run first (bot-spam markers, stale EXIF, geotag drift); an opt-in **live LLM analyst** (OpenAI SDK → LiteLLM gateway, model `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`, optional vision) judges tone/plausibility on top. Env via `backend/.env`: `LITELLM_API_KEY`, `USE_LIVE_AI`, `USE_VISION`. LLM output is strict JSON validated by Pydantic (`LLMAnalysis`); bad JSON → `AI Parsing Error` debunk; infra failure → heuristic fallback (never crash).
+- **AI orchestration** — `logic/verification.py`: two-layer credibility filter. Deterministic heuristics always run first (bot-spam markers, stale EXIF, geotag drift); an opt-in **live LLM analyst** (OpenAI SDK → LiteLLM gateway, model `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`) judges tone/plausibility on top and returns strict JSON (`LLMAnalysis`: verdict, event_type, score, `rationale`, `media_consistency`) validated by Pydantic. **Vision (USE_VISION=true)**: the gateway blocks remote image URLs (stackit.de allow-list), so media is downloaded and sent as a **base64 data URI** (≤5 MB, magic-byte sniffed; videos judged via their preview frame). Resilience: `LITELLM_API_KEYS` rotated on 429, ≤4 concurrent gateway calls, media/infra failures degrade to text-only/heuristics — never crash. Env via `backend/.env`: `LITELLM_API_KEY(S)`, `USE_LIVE_AI`, `USE_VISION`.
 - **EXIF-based checks** — stale capture timestamps (recycled footage) and conflicting geotags, parsed from report metadata.
 - **Geospatial** — `logic/geospatial.py`: **Geopy** geodesic clustering (same event type + **1.0 km radius** + **60 min window** → one `VerifiedIncident`). PostGIS is the scale-up path once a real DB lands; the MVP is in-memory.
 - **Responder guidance** — `logic/guidance.py`: deterministic `severity` grading + per-incident `action_hint` (the challenge's "action hints"); embedded into each `VerifiedIncident` together with its `sources` timeline. The event taxonomy (`KNOWN_EVENT_TYPES`, 27 classes) mirrors the **BW Ministry of the Interior crisis catalogue** (natural hazards, tech/industrial, CBRN, pandemic, terrorism/security, supply crises, evacuations); the LLM classifier and `frontend/src/lib/eventMeta.tsx` are constrained/synced to it.
@@ -79,6 +79,3 @@ cd frontend && npm run dev
 - **`verify-ai-pipeline`** — run backend tests for the extraction schema + 1 km radius math, no live APIs.
 - **`generate-vost-mocks`** — regenerate the synthetic Konstanz feed in `backend/mock_data.json`.
 - **`sync-dashboard`** — verify the frontend fetches/plots backend data; check marker formatting + lint.
-
-# General Instructions 
-- never use "—" use ":", "-" or "," instead
