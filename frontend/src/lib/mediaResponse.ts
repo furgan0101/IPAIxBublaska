@@ -1,5 +1,5 @@
 /**
- * Command Mode data layer.
+ * City-focus data layer (public-pulse metrics + media response drafts).
  *
  * Derives the "public pulse" picture (signal volume, sentiment split,
  * trending narratives, representative snippets) for a focused city from the

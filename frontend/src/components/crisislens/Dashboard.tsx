@@ -38,7 +38,7 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-background font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-      Loading map…
+      Loading Baden-Württemberg map…
     </div>
   ),
 });
@@ -50,19 +50,19 @@ const MODE_META: Record<
   { label: string; chip: string; dot: string; ping: boolean }
 > = {
   live: {
-    label: "Live Data",
+    label: "Live data",
     chip: "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
     dot: "bg-emerald-500",
     ping: true,
   },
   mock: {
-    label: "Mock Data",
+    label: "Demo data",
     chip: "border-gold/40 bg-gold-fill/10 text-gold",
     dot: "bg-gold-fill",
     ping: false,
   },
   offline: {
-    label: "Offline Demo",
+    label: "Offline",
     chip: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
     dot: "bg-red-500",
     ping: false,
@@ -74,7 +74,7 @@ interface DashboardProps {
   onToggleTheme: () => void;
 }
 
-/** Main command-center view: map, stats, signal feed and report dossier. */
+/** Main dashboard view: map, stats, signal feed and report dossier. */
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [focusCity, setFocusCity] = useState<string | null>(null);
@@ -146,14 +146,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     [reports, selectedId],
   );
 
-  // Command Mode scopes the entire dashboard — stats, feed, map — to one city.
+  // City focus scopes the entire dashboard — stats, feed, map — to one city.
   const scopedReports = useMemo(
     () =>
       focusCity ? reports.filter((r) => r.city === focusCity) : reports,
     [reports, focusCity],
   );
 
-  // Leave Command Mode automatically if the city drops off the board
+  // Leave city focus automatically if the city drops off the board
   // (live feeds can age incidents out between polls).
   useEffect(() => {
     if (focusCity && !reports.some((r) => r.city === focusCity)) {
@@ -274,14 +274,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     setSelectedId(id);
   }, []);
 
-  const enterCommandMode = (city: string): void => {
+  const enterCityFocus = (city: string): void => {
     setSelectedId(null);
     setSelectedMeasureId(null);
     setArmedTool(null);
     setFocusCity(city);
   };
 
-  const exitCommandMode = (): void => {
+  const exitCityFocus = (): void => {
     setSelectedId(null);
     setSelectedMeasureId(null);
     setArmedTool(null);
@@ -294,7 +294,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   }, [reports]);
 
   // Escape peels back one layer at a time: armed tool → measure selection →
-  // dossier → Command Mode.
+  // dossier → city focus.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key !== "Escape") return;
@@ -336,7 +336,48 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </span>
         </div>
 
+        <span className="hidden h-5 w-px bg-border md:block" aria-hidden />
+        <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground md:block">
+          Baden-Württemberg
+        </span>
+
         <div className="ml-auto flex items-center gap-3">
+          {!focusCity && (
+            <CityFocusPicker reports={reports} onFocus={enterCityFocus} />
+          )}
+
+          <span
+            className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
+            title="Data source: live backend pipeline vs. bundled demo dataset"
+          >
+            <span className="relative flex h-2 w-2">
+              {modeMeta.ping && (
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${modeMeta.dot}`}
+                />
+              )}
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full ${modeMeta.dot}`}
+              />
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+              {modeMeta.label}
+            </span>
+          </span>
+
+          <span
+            className="hidden rounded-full border border-border bg-muted px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground md:block"
+            title="LLM analyst mode (LiteLLM gateway, Qwen3-VL)"
+          >
+            AI {health?.ai_mode ?? "mock"}
+          </span>
+
+          <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
+            Last analysis{" "}
+            <span className="text-foreground" suppressHydrationWarning>
+              {lastAnalysis ? lastAnalysis.toLocaleTimeString("de-DE") : "—"}
+            </span>
+          </span>
           {selected && (
             <button
               type="button"
@@ -360,22 +401,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
       </header>
 
-      <FilterToolbar
-        tagCounts={tagCounts}
-        activeTag={activeTag}
-        setActiveTag={setActiveTag}
-        minConfidence={minConfidence}
-        setMinConfidence={setMinConfidence}
-      />
-
-      {/* -------------------------------------------- command mode banner */}
+      {/* --------------------------------------------- city focus banner */}
       {focusCity && (
         <CommandBanner
           city={focusCity}
           firstSignal={firstSignal}
           reportCount={scopedReports.length}
           highestRisk={highestRisk}
-          onExit={exitCommandMode}
+          onExit={exitCityFocus}
         />
       )}
 
@@ -486,7 +519,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onResizeZone={(id, radiusM) => updateMeasure(id, { radiusM })}
           />
 
-          {/* Measure palette — the editable tactical layer (Command Mode). */}
+          {/* Tag filter */}
+          <TagFilter
+            tags={tagCounts}
+            active={activeTag}
+            onChange={setActiveTag}
+          />
+
+          {/* Measure palette — the editable planning layer (city focus). */}
           {focusCity && !selected && (
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
@@ -539,8 +579,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
           </main>
 
-        {/* Command console — LISTEN + RESPOND for the focused city. It
-            collapses like the signals rail when the dossier takes over. */}
+        {/* City console — listening + response tools for the focused city.
+            It collapses like the signals rail when the dossier takes over. */}
         {focusCity && (
           <aside
             className="hidden shrink-0 overflow-hidden transition-[width] duration-500 ease-in-out md:block"

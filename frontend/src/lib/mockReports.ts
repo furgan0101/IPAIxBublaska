@@ -1,5 +1,5 @@
 /**
- * CrisisLens frontend mock dataset — Baden-Württemberg demo sector.
+ * CrisisLens frontend demo dataset — Baden-Württemberg.
  * Purely synthetic: every account, snippet and link is fictional.
  * Timestamps are rebased to module-load time so the demo always looks live.
  */
