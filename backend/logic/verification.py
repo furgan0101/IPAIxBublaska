@@ -337,6 +337,7 @@ def filter_reports(
                     timestamp=report.timestamp,
                     reason_flagged=assessment.reason or "Failed credibility checks",
                     credibility_score=assessment.score,
+                    url=report.url,
                 )
             )
     return credible, debunked

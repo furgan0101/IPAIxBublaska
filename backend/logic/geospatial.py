@@ -93,6 +93,7 @@ def cluster_reports(
                         author=r.author,
                         text=r.text,
                         timestamp=r.timestamp,
+                        url=r.url,
                     )
                     for r in ordered
                 ],
