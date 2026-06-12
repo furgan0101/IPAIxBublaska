@@ -1,0 +1,360 @@
+[
+ {
+  "id": "116733377369449791",
+  "created_at": "2026-06-11T20:33:01.840Z",
+  "in_reply_to_id": null,
+  "in_reply_to_account_id": null,
+  "sensitive": false,
+  "spoiler_text": "",
+  "visibility": "public",
+  "language": "de",
+  "uri": "https://mastodon.social/ap/users/116211916276971371/statuses/116733377369449791",
+  "url": "https://mastodon.social/@news_reader/116733377369449791",
+  "replies_count": 0,
+  "reblogs_count": 0,
+  "favourites_count": 0,
+  "quotes_count": 0,
+  "edited_at": null,
+  "content": "<p>Polizei Konstanz: (Talheim, K 5919, B 523 / Lkr. Tuttlingen) Verkehrsunfall beim Abbiegen: Drei Leichtverletzte und Schaden in Höhe von etwa 14.000 Euro (11.06.2026) – Talheim - Am Donnerstagmorgen hat sich auf der Kreisstraße 5919... <a href=\"https://news-reader.info/x/41773578\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">news-reader.info/x/41773578</span><span class=\"invisible\"></span></a> <a href=\"https://mastodon.social/tags/Polizei\" class=\"mention hashtag\" rel=\"tag\">#<span>Polizei</span></a> <a href=\"https://mastodon.social/tags/Konstanz\" class=\"mention hashtag\" rel=\"tag\">#<span>Konstanz</span></a></p>",
+  "reblog": null,
+  "application": {
+   "name": "News_Reader_API",
+   "website": "https://news.feed-reader.net/"
+  },
+  "account": {
+   "id": "116211916276971371",
+   "username": "news_reader",
+   "acct": "news_reader",
+   "display_name": "News Reader: Polizei&Feuerwehr",
+   "locked": false,
+   "bot": false,
+   "discoverable": true,
+   "indexable": true,
+   "group": false,
+   "created_at": "2026-03-11T00:00:00.000Z",
+   "note": "<p>Impressum: <a href=\"https://news.feed-reader.net/popup-impressum.htm\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"ellipsis\">news.feed-reader.net/popup-imp</span><span class=\"invisible\">ressum.htm</span></a><br />Web: <a href=\"https://news.feed-reader.net/\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">news.feed-reader.net/</span><span class=\"invisible\"></span></a></p><p>Facebook: <a href=\"https://www.facebook.com/NewsReaderBlaulicht/\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://www.</span><span class=\"ellipsis\">facebook.com/NewsReaderBlaulic</span><span class=\"invisible\">ht/</span></a><br />X: <a href=\"https://x.com/Blaulicht_D\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">x.com/Blaulicht_D</span><span class=\"invisible\"></span></a></p>",
+   "url": "https://mastodon.social/@news_reader",
+   "uri": "https://mastodon.social/ap/users/116211916276971371",
+   "avatar": "https://files.mastodon.social/accounts/avatars/116/211/916/276/971/371/original/5d46f33391886cec.jpg",
+   "avatar_static": "https://files.mastodon.social/accounts/avatars/116/211/916/276/971/371/original/5d46f33391886cec.jpg",
+   "avatar_description": "",
+   "header": "https://files.mastodon.social/accounts/headers/116/211/916/276/971/371/original/a17a032651ebb7b0.jpg",
+   "header_static": "https://files.mastodon.social/accounts/headers/116/211/916/276/971/371/original/a17a032651ebb7b0.jpg",
+   "header_description": "",
+   "followers_count": 19,
+   "following_count": 0,
+   "statuses_count": 1537,
+   "last_status_at": "2026-06-12",
+   "hide_collections": null,
+   "show_media": true,
+   "show_media_replies": true,
+   "show_featured": true,
+   "noindex": false,
+   "feature_approval": {
+    "automatic": [
+     "public"
+    ],
+    "manual": [],
+    "current_user": "denied"
+   },
+   "emojis": [],
+   "roles": [],
+   "fields": []
+  },
+  "media_attachments": [],
+  "mentions": [],
+  "tags": [
+   {
+    "name": "polizei",
+    "url": "https://mastodon.social/tags/polizei"
+   },
+   {
+    "name": "konstanz",
+    "url": "https://mastodon.social/tags/konstanz"
+   }
+  ],
+  "emojis": [],
+  "tagged_collections": [],
+  "quote": null,
+  "card": null,
+  "poll": null,
+  "quote_approval": {
+   "automatic": [
+    "public"
+   ],
+   "manual": [],
+   "current_user": "denied"
+  }
+ },
+ {
+  "id": "116715520472749792",
+  "created_at": "2026-06-08T16:51:47.229Z",
+  "in_reply_to_id": null,
+  "in_reply_to_account_id": null,
+  "sensitive": false,
+  "spoiler_text": "",
+  "visibility": "public",
+  "language": "de",
+  "uri": "https://mastodon.social/ap/users/115972929608155869/statuses/116715520472749792",
+  "url": "https://mastodon.social/@AngelMiguelez/116715520472749792",
+  "replies_count": 1,
+  "reblogs_count": 0,
+  "favourites_count": 3,
+  "quotes_count": 0,
+  "edited_at": null,
+  "content": "<p>Konstanz is full of history, charm, and beautiful views — but the iconic Imperia statue truly steals the spotlight at the harbor. A symbol of power, satire, and medieval history, she reminds visitors that Konstanz is anything but ordinary. ✨🌊</p><p><a href=\"https://mastodon.social/tags/Konstanz\" class=\"mention hashtag\" rel=\"tag\">#<span>Konstanz</span></a> <a href=\"https://mastodon.social/tags/Imperia\" class=\"mention hashtag\" rel=\"tag\">#<span>Imperia</span></a> <a href=\"https://mastodon.social/tags/Bodensee\" class=\"mention hashtag\" rel=\"tag\">#<span>Bodensee</span></a></p>",
+  "reblog": null,
+  "application": {
+   "name": "Web",
+   "website": null
+  },
+  "account": {
+   "id": "115972929608155869",
+   "username": "AngelMiguelez",
+   "acct": "AngelMiguelez",
+   "display_name": "Angel Miguelez",
+   "locked": false,
+   "bot": false,
+   "discoverable": false,
+   "indexable": false,
+   "group": false,
+   "created_at": "2026-01-28T00:00:00.000Z",
+   "note": "",
+   "url": "https://mastodon.social/@AngelMiguelez",
+   "uri": "https://mastodon.social/ap/users/115972929608155869",
+   "avatar": "https://files.mastodon.social/accounts/avatars/115/972/929/608/155/869/original/dda764fa15260901.jpg",
+   "avatar_static": "https://files.mastodon.social/accounts/avatars/115/972/929/608/155/869/original/dda764fa15260901.jpg",
+   "avatar_description": "",
+   "header": "https://files.mastodon.social/accounts/headers/115/972/929/608/155/869/original/a27c1abbe6232ab4.jpg",
+   "header_static": "https://files.mastodon.social/accounts/headers/115/972/929/608/155/869/original/a27c1abbe6232ab4.jpg",
+   "header_description": "",
+   "followers_count": 1,
+   "following_count": 12,
+   "statuses_count": 66,
+   "last_status_at": "2026-06-12",
+   "hide_collections": null,
+   "show_media": true,
+   "show_media_replies": true,
+   "show_featured": true,
+   "noindex": false,
+   "feature_approval": {
+    "automatic": [],
+    "manual": [],
+    "current_user": "denied"
+   },
+   "emojis": [],
+   "roles": [],
+   "fields": []
+  },
+  "media_attachments": [
+   {
+    "id": "116715518347114988",
+    "type": "image",
+    "url": "https://files.mastodon.social/media_attachments/files/116/715/518/347/114/988/original/78ceb7c9c7395d9b.jpg",
+    "preview_url": "https://files.mastodon.social/media_attachments/files/116/715/518/347/114/988/small/78ceb7c9c7395d9b.jpg",
+    "remote_url": null,
+    "preview_remote_url": null,
+    "text_url": null,
+    "meta": {
+     "original": {
+      "width": 600,
+      "height": 600,
+      "size": "600x600",
+      "aspect": 1.0
+     },
+     "small": {
+      "width": 480,
+      "height": 480,
+      "size": "480x480",
+      "aspect": 1.0
+     },
+     "focus": {
+      "x": 0.02,
+      "y": 0.65
+     }
+    },
+    "description": "Die Imperia-Statue in Konstanz ist ein faszinierendes Wahrzeichen, das Geschichte, Kunst und Satire auf einzigartige Weise verbindet.",
+    "blurhash": "UZOWjDxt_2og~qaxVss,D%t5WUs,kXoextay"
+   },
+   {
+    "id": "116715518341367296",
+    "type": "image",
+    "url": "https://files.mastodon.social/media_attachments/files/116/715/518/341/367/296/original/2dcc61419864fada.jpg",
+    "preview_url": "https://files.mastodon.social/media_attachments/files/116/715/518/341/367/296/small/2dcc61419864fada.jpg",
+    "remote_url": null,
+    "preview_remote_url": null,
+    "text_url": null,
+    "meta": {
+     "original": {
+      "width": 600,
+      "height": 600,
+      "size": "600x600",
+      "aspect": 1.0
+     },
+     "small": {
+      "width": 480,
+      "height": 480,
+      "size": "480x480",
+      "aspect": 1.0
+     },
+     "focus": {
+      "x": 0.02,
+      "y": 0.49
+     }
+    },
+    "description": "Die Imperia-Statue in Konstanz ist ein faszinierendes Wahrzeichen, das Geschichte, Kunst und Satire auf einzigartige Weise verbindet.",
+    "blurhash": "UiN,i4t6NyoM?^a#s:oJ%Mjtn$WVVsS5NHoJ"
+   }
+  ],
+  "mentions": [],
+  "tags": [
+   {
+    "name": "konstanz",
+    "url": "https://mastodon.social/tags/konstanz"
+   },
+   {
+    "name": "imperia",
+    "url": "https://mastodon.social/tags/imperia"
+   },
+   {
+    "name": "bodensee",
+    "url": "https://mastodon.social/tags/bodensee"
+   }
+  ],
+  "emojis": [],
+  "tagged_collections": [],
+  "quote": null,
+  "card": null,
+  "poll": null,
+  "quote_approval": {
+   "automatic": [
+    "public"
+   ],
+   "manual": [],
+   "current_user": "denied"
+  }
+ },
+ {
+  "id": "116714309280971428",
+  "created_at": "2026-06-08T11:43:45.000Z",
+  "in_reply_to_id": null,
+  "in_reply_to_account_id": null,
+  "sensitive": false,
+  "spoiler_text": "",
+  "visibility": "public",
+  "language": "de",
+  "uri": "https://mastodon.online/users/cluk/statuses/116714309238351052",
+  "url": "https://mastodon.online/@cluk/116714309238351052",
+  "replies_count": 0,
+  "reblogs_count": 6,
+  "favourites_count": 1,
+  "quotes_count": 0,
+  "edited_at": null,
+  "content": "<p>Am Mittwoch 10.6. gibt es in <a href=\"https://mastodon.online/tags/Konstanz\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Konstanz</span></a> eine Infoveranstaltung zur <a href=\"https://mastodon.online/tags/W%C3%A4rmewende\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Wärmewende</span></a>. Infos über geplanteWärmenetze und dezentrale Lösungen.<br>Ich hoste einen Thementisch zu <a href=\"https://mastodon.online/tags/Energiewende\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Energiewende</span></a> im <a href=\"https://mastodon.online/tags/Mehrparteienhaus\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Mehrparteienhaus</span></a>.<br>Im <a href=\"https://mastodon.online/tags/Bodenseeforum\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Bodenseeforum</span></a> ab 17:30.<br>Kommt vorbei!<br><a href=\"https://www.konstanz.de/service/presse/pressemitteilungen/zukunftwaerme\" rel=\"nofollow noopener\" translate=\"no\" target=\"_blank\"><span class=\"invisible\">https://www.</span><span class=\"ellipsis\">konstanz.de/service/presse/pre</span><span class=\"invisible\">ssemitteilungen/zukunftwaerme</span></a></p>",
+  "reblog": null,
+  "account": {
+   "id": "109247245727094872",
+   "username": "cluk",
+   "acct": "cluk@mastodon.online",
+   "display_name": "Christoph",
+   "locked": false,
+   "bot": false,
+   "discoverable": true,
+   "indexable": true,
+   "group": false,
+   "created_at": "2022-10-28T00:00:00.000Z",
+   "note": "<p>Systemischer Coach &amp; agiler Berater mit den Lieblingsthemen Leadership und Veränderung.<br>Früher Softwareentwickler und Physiker.<br>Jetzt auch Energieberater für Wohngebäude.</p><p>Posts über <a href=\"https://mastodon.online/tags/Energiewende\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Energiewende</span></a> und <a href=\"https://mastodon.online/tags/Verkehrswende\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Verkehrswende</span></a>, vielleicht auch <a href=\"https://mastodon.online/tags/Bodensee\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Bodensee</span></a> und <a href=\"https://mastodon.online/tags/Segeln\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>Segeln</span></a>.<br><a href=\"https://mastodon.online/tags/NieWiederIstJetzt\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>NieWiederIstJetzt</span></a> und <a href=\"https://mastodon.online/tags/noAfd\" class=\"mention hashtag\" rel=\"nofollow noopener\" target=\"_blank\">#<span>noAfd</span></a></p>",
+   "url": "https://mastodon.online/@cluk",
+   "uri": "https://mastodon.online/users/cluk",
+   "avatar": "https://files.mastodon.social/cache/accounts/avatars/109/247/245/727/094/872/original/bbbc457414f84274.jpg",
+   "avatar_static": "https://files.mastodon.social/cache/accounts/avatars/109/247/245/727/094/872/original/bbbc457414f84274.jpg",
+   "avatar_description": "",
+   "header": "https://files.mastodon.social/cache/accounts/headers/109/247/245/727/094/872/original/7b2f4a3e0de5f98c.png",
+   "header_static": "https://files.mastodon.social/cache/accounts/headers/109/247/245/727/094/872/original/7b2f4a3e0de5f98c.png",
+   "header_description": "",
+   "followers_count": 260,
+   "following_count": 175,
+   "statuses_count": 948,
+   "last_status_at": "2026-06-10",
+   "hide_collections": false,
+   "show_media": true,
+   "show_media_replies": true,
+   "show_featured": true,
+   "feature_approval": {
+    "automatic": [
+     "public"
+    ],
+    "manual": [],
+    "current_user": "denied"
+   },
+   "emojis": [],
+   "fields": [
+    {
+     "name": "Web",
+     "value": "<a href=\"https://pingworks.de\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"\">pingworks.de</span><span class=\"invisible\"></span></a>",
+     "verified_at": "2026-06-06T12:59:06.963+00:00"
+    },
+    {
+     "name": "Energiewende",
+     "value": "<a href=\"https://energiewende-einfach-machen.net/\" target=\"_blank\" rel=\"nofollow noopener\" translate=\"no\"><span class=\"invisible\">https://</span><span class=\"ellipsis\">energiewende-einfach-machen.ne</span><span class=\"invisible\">t/</span></a>",
+     "verified_at": "2026-06-06T12:59:07.453+00:00"
+    }
+   ]
+  },
+  "media_attachments": [],
+  "mentions": [],
+  "tags": [
+   {
+    "name": "konstanz",
+    "url": "https://mastodon.social/tags/konstanz"
+   },
+   {
+    "name": "warmewende",
+    "url": "https://mastodon.social/tags/warmewende"
+   },
+   {
+    "name": "energiewende",
+    "url": "https://mastodon.social/tags/energiewende"
+   },
+   {
+    "name": "mehrparteienhaus",
+    "url": "https://mastodon.social/tags/mehrparteienhaus"
+   },
+   {
+    "name": "bodenseeforum",
+    "url": "https://mastodon.social/tags/bodenseeforum"
+   }
+  ],
+  "emojis": [],
+  "tagged_collections": [],
+  "quote": null,
+  "card": {
+   "url": "https://www.konstanz.de/service/presse/pressemitteilungen/zukunftwaerme",
+   "title": "Zukunft Wärme: Infoveranstaltung zur Wärmeversorgung in Konstanz",
+   "description": "Stadt und Stadtwerke laden am 10.06.2026 ins Bodenseeforum ein",
+   "language": "de",
+   "type": "link",
+   "author_name": "",
+   "author_url": "",
+   "provider_name": "",
+   "provider_url": "",
+   "html": "",
+   "width": 571,
+   "height": 404,
+   "image": "https://files.mastodon.social/cache/preview_cards/images/195/817/937/original/e5ce0e2a745cee53.png",
+   "image_description": "",
+   "embed_url": "",
+   "blurhash": "UhRT7|tlV@iwyXkCo}V@u4kWkCae*JkWaeae",
+   "published_at": null,
+   "authors": []
+  },
+  "poll": null,
+  "quote_approval": {
+   "automatic": [
+    "public"
+   ],
+   "manual": [],
+   "current_user": "denied"
+  }
+ }
+]
