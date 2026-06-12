@@ -36,7 +36,6 @@ mock_data.json ──> ingestion ──> AI credibility filter ──> geo-clust
 Then open **http://localhost:3000**.
 
 ### Individual servers (fallback)
-
 ```
 cd backend && python -m uvicorn main:app --reload --port 8000
 ```

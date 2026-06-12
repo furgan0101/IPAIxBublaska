@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VOSTbw - Backend Debug</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: monospace; background: #0f0f0f; color: #e0e0e0; padding: 20px; font-size: 13px; }
+  h1 { color: #f5c842; margin-bottom: 4px; font-size: 16px; letter-spacing: 0.1em; }
+  .subtitle { color: #666; margin-bottom: 20px; font-size: 11px; }
+  h2 { color: #aaa; margin: 20px 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; }
+
+  /* Health bar */
+  #health { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  .kv { background: #1a1a1a; border: 1px solid #2a2a2a; border-radius: 4px; padding: 6px 12px; }
+  .kv span { color: #666; margin-right: 6px; }
+  .live { color: #4ade80; }
+  .mock { color: #facc15; }
+  .err  { color: #f87171; }
+
+  /* Buttons */
+  .actions { display: flex; gap: 8px; margin: 12px 0; }
+  button {
+    background: #1e1e1e; border: 1px solid #333; color: #ccc;
+    padding: 5px 14px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 12px;
+  }
+  button:hover { background: #2a2a2a; border-color: #555; }
+  button.primary { border-color: #f5c842; color: #f5c842; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin-bottom: 24px; }
+  table { border-collapse: collapse; width: 100%; min-width: 800px; }
+  th { background: #1a1a1a; color: #888; text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2a2a; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+  td { padding: 5px 10px; border-bottom: 1px solid #1e1e1e; vertical-align: top; max-width: 320px; }
+  tr:hover td { background: #161616; }
+
+  .sev-high     { color: #f87171; }
+  .sev-moderate { color: #fb923c; }
+  .sev-low      { color: #4ade80; }
+  .cred-high    { color: #4ade80; }
+  .cred-medium  { color: #facc15; }
+  .cred-low     { color: #f87171; }
+
+  .truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 300px; }
+  #status { font-size: 11px; color: #555; margin-top: 16px; }
+  #status.ok  { color: #4ade80; }
+  #status.err { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h1>VOSTbw BACKEND DEBUG</h1>
+<p class="subtitle">Auto-refreshes every 3 s &nbsp;|&nbsp; Backend: <code>http://localhost:8000</code></p>
+
+<h2>Health</h2>
+<div id="health">connecting...</div>
+
+<div class="actions">
+  <button class="primary" onclick="poll()">Poll live feeds (POST /api/poll)</button>
+  <button onclick="reset()">Reset pipeline (POST /api/reset)</button>
+  <button onclick="refresh()">Refresh now</button>
+</div>
+
+<h2>Verified Incidents (<span id="inc-count">-</span>)</h2>
+<div class="table-wrap">
+  <table id="incidents-table">
+    <thead>
+      <tr>
+        <th>ID</th><th>Event type</th><th>Severity</th><th>Confidence</th>
+        <th>Sources</th><th>Lat / Lon</th><th>Summary</th><th>Action hint</th>
+      </tr>
+    </thead>
+    <tbody id="incidents-body"><tr><td colspan="8">loading...</td></tr></tbody>
+  </table>
+</div>
+
+<h2>Debunked Reports (<span id="deb-count">-</span>)</h2>
+<div class="table-wrap">
+  <table id="debunked-table">
+    <thead>
+      <tr>
+        <th>ID</th><th>Event type</th><th>Credibility</th><th>Author</th>
+        <th>Source</th><th>Lat / Lon</th><th>Reason flagged</th><th>Text</th>
+      </tr>
+    </thead>
+    <tbody id="debunked-body"><tr><td colspan="8">loading...</td></tr></tbody>
+  </table>
+</div>
+
+<div id="status">connecting...</div>
+
+<script>
+const BASE = 'http://localhost:8000';
+
+function sevClass(s) {
+  return s === 'high' ? 'sev-high' : s === 'moderate' ? 'sev-moderate' : 'sev-low';
+}
+function credClass(n) {
+  return n >= 0.75 ? 'cred-high' : n >= 0.45 ? 'cred-medium' : 'cred-low';
+}
+function pct(n) { return Math.round(n * 100) + '%'; }
+function trunc(s, n=80) { return s && s.length > n ? s.slice(0, n) + '...' : (s || ''); }
+function td(content, cls='') {
+  return `<td${cls ? ` class="${cls}"` : ''}>${content}</td>`;
+}
+
+async function refresh() {
+  const status = document.getElementById('status');
+  try {
+    const [healthRes, incRes, debRes] = await Promise.all([
+      fetch(`${BASE}/api/health`),
+      fetch(`${BASE}/api/incidents`),
+      fetch(`${BASE}/api/debunked`),
+    ]);
+    const health = await healthRes.json();
+    const incidents = await incRes.json();
+    const debunked = await debRes.json();
+
+    // Health bar
+    const aiCls = health.ai_mode === 'live' ? 'live' : health.ai_mode === 'live-ready' ? 'mock' : 'mock';
+    const dataCls = health.data_mode === 'live' ? 'live' : 'mock';
+    document.getElementById('health').innerHTML = `
+      <div class="kv"><span>status</span>${health.status}</div>
+      <div class="kv"><span>ai_mode</span><b class="${aiCls}">${health.ai_mode}</b></div>
+      <div class="kv"><span>data_mode</span><b class="${dataCls}">${health.data_mode ?? 'mock'}</b></div>
+      <div class="kv"><span>incidents</span>${health.incidents}</div>
+      <div class="kv"><span>debunked</span>${health.debunked}</div>
+      ${health.feeds ? `<div class="kv"><span>feeds</span>${JSON.stringify(health.feeds)}</div>` : ''}
+    `;
+
+    // Incidents
+    document.getElementById('inc-count').textContent = incidents.length;
+    document.getElementById('incidents-body').innerHTML = incidents.length === 0
+      ? '<tr><td colspan="8">no incidents</td></tr>'
+      : incidents.map(i => `<tr>
+          ${td(i.id)}
+          ${td(i.event_type)}
+          ${td(`<b>${i.severity}</b>`, sevClass(i.severity))}
+          ${td(pct(i.confidence_score))}
+          ${td(i.report_count + ' (' + (i.source_ids || []).join(', ') + ')')}
+          ${td(`${i.lat.toFixed(4)}, ${i.lon.toFixed(4)}`)}
+          ${td(`<span class="truncate" title="${i.summary}">${trunc(i.summary)}</span>`)}
+          ${td(`<span class="truncate" title="${i.action_hint}">${trunc(i.action_hint)}</span>`)}
+        </tr>`).join('');
+
+    // Debunked
+    document.getElementById('deb-count').textContent = debunked.length;
+    document.getElementById('debunked-body').innerHTML = debunked.length === 0
+      ? '<tr><td colspan="8">no debunked reports</td></tr>'
+      : debunked.map(d => `<tr>
+          ${td(d.id)}
+          ${td(d.event_type)}
+          ${td(pct(d.credibility_score), credClass(d.credibility_score))}
+          ${td(d.author)}
+          ${td(d.source)}
+          ${td(`${d.lat.toFixed(4)}, ${d.lon.toFixed(4)}`)}
+          ${td(`<span class="truncate" title="${d.reason_flagged}">${trunc(d.reason_flagged)}</span>`)}
+          ${td(`<span class="truncate" title="${d.text}">${trunc(d.text)}</span>`)}
+        </tr>`).join('');
+
+    status.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
+    status.className = 'ok';
+  } catch (e) {
+    status.textContent = `Error: ${e.message} - is the backend running on :8000?`;
+    status.className = 'err';
+  }
+}
+
+async function poll() {
+  const r = await fetch(`${BASE}/api/poll`, { method: 'POST' });
+  const j = await r.json();
+  alert(JSON.stringify(j, null, 2));
+  refresh();
+}
+
+async function reset() {
+  const r = await fetch(`${BASE}/api/reset`, { method: 'POST' });
+  const j = await r.json();
+  alert(JSON.stringify(j, null, 2));
+  refresh();
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>

@@ -79,3 +79,6 @@ cd frontend && npm run dev
 - **`verify-ai-pipeline`** — run backend tests for the extraction schema + 1 km radius math, no live APIs.
 - **`generate-vost-mocks`** — regenerate the synthetic Konstanz feed in `backend/mock_data.json`.
 - **`sync-dashboard`** — verify the frontend fetches/plots backend data; check marker formatting + lint.
+
+# General Instructions 
+- never use "—" use ":", "-" or "," instead

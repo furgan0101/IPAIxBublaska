@@ -50,6 +50,7 @@ DATA_FILE: Path = Path(__file__).parent / "mock_data.json"
 ALLOWED_ORIGINS: list[str] = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "null",  # file:// origin for debug.html opened directly in the browser
 ]
 
 
