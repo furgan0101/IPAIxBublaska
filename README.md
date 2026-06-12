@@ -75,6 +75,22 @@ A raw report is **debunked** if any rule fires:
 
 Surviving reports are **clustered**: same event type, within a **1.0 km radius** of the cluster centroid, within a **60 min** window of another member → merged into one `VerifiedIncident`. Confidence scales with the number of independent corroborating sources.
 
+## Scenario coverage (BW Ministry of the Interior crisis catalogue)
+
+The event taxonomy, severity grading, and responder action hints cover the official potential-crisis scenarios of the Ministry of the Interior of Baden-Württemberg (source of truth: `backend/logic/guidance.py`; the live LLM classifier is constrained to the same classes):
+
+| Ministry category | Event classes |
+|---|---|
+| Natural hazards | `flood` · `storm` · `wildfire` · `earthquake` · `heatwave` · `cold_spell` |
+| Technological & industrial disasters | `fire` · `explosion` · `chemical_accident` · `hazmat` · `accident` (large-scale transport) · `infrastructure_failure` |
+| CBRN incidents | `nuclear_accident` · `radiological` · `biological` · `chemical_attack` |
+| Public health | `pandemic` |
+| Terrorism & security threats | `terror_attack` · `cbrn_attack` · `hostage` · `sabotage` |
+| Supply & infrastructure crises | `power_outage` · `telecom_failure` · `water_supply` · `food_supply` · `supply_chain` |
+| Civil defence operations | `evacuation` |
+
+Each class carries an impact-based severity (`high`/`moderate`/`low`) and a concise recommended responder action; security-sensitive classes (terror, hostage, CBRN) deliberately prescribe **information discipline** rather than operational detail. Preparedness *measures* from the catalogue (e.g. cooperation with federal authorities) are intentionally not incident types. The scenario injector includes a `chemical_accident` preset at the Staad ferry port to demonstrate the catalogue live.
+
 ## Live AI mode (optional — LiteLLM gateway)
 
 Mock mode is the default: **zero external calls**. To enable the live LLM analyst (Qwen3-VL via the govdigital LiteLLM gateway):

@@ -34,6 +34,7 @@ from geopy.distance import geodesic
 from openai import BadRequestError, OpenAI, OpenAIError
 from pydantic import BaseModel, Field, ValidationError
 
+from logic.guidance import KNOWN_EVENT_TYPES
 from schemas import DebunkedReport, RawReport
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
@@ -50,7 +51,8 @@ SYSTEM_PROMPT: str = (
     "You are an expert OSINT intelligence analyst for VOSTbw, supporting civil-protection "
     "crisis response in Baden-Württemberg. Analyze ONE public social-media report for "
     "situational awareness. "
-    "(1) Classify event_type (e.g. flood, fire, storm, accident, power_outage, other). "
+    "(1) Classify event_type as exactly one of the official BW crisis-scenario classes: "
+    f"{', '.join(KNOWN_EVENT_TYPES)}, or 'other'. "
     "(2) Assign a credibility_score from 0.0 to 1.0 based on tone, specificity, and plausibility. "
     "(3) Set is_credible=false if the text reads as bot-spam, mass-share bait, or wildly "
     "exaggerated/implausible; true if it reads like a genuine local or first-hand report. "

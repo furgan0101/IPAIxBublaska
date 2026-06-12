@@ -114,6 +114,25 @@ def test_severity_grading() -> None:
     assert severity_for("unknown_event") == "low"
 
 
+def test_bw_ministry_taxonomy_is_complete() -> None:
+    """Every class in the BW crisis catalogue has a hint and a severity."""
+    from logic.guidance import KNOWN_EVENT_TYPES, action_hint
+
+    expected_subset = {
+        "flood", "storm", "wildfire", "earthquake", "heatwave", "cold_spell",
+        "fire", "explosion", "chemical_accident", "hazmat", "accident",
+        "infrastructure_failure", "nuclear_accident", "radiological",
+        "biological", "chemical_attack", "pandemic", "terror_attack",
+        "cbrn_attack", "hostage", "sabotage", "power_outage",
+        "telecom_failure", "water_supply", "food_supply", "supply_chain",
+        "evacuation",
+    }
+    assert expected_subset <= set(KNOWN_EVENT_TYPES)
+    for event_type in KNOWN_EVENT_TYPES:
+        assert action_hint(event_type, 3, 0.9)
+        assert severity_for(event_type) in {"high", "moderate", "low"}
+
+
 def test_incidents_carry_guidance_and_sources() -> None:
     result = run_pipeline(load_raw_reports())
     flood = next(i for i in result["incidents"] if i.event_type == "flood")
