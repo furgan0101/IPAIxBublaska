@@ -51,7 +51,10 @@ logging.getLogger("httpx").setLevel(logging.INFO)
 logging.getLogger("openai").setLevel(_LOG_LEVEL)
 logging.getLogger("vost.verification").setLevel(logging.DEBUG)
 
+import httpx
 from ingestion import IngestionService, IngestionSettings, default_connectors
+from ingestion.geocode import Geocoder
+from ingestion.storage import FeedStore
 from logic.geospatial import cluster_reports
 from logic.verification import (
     ai_mode,
