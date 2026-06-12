@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +34,22 @@ from typing import AsyncIterator, TypedDict
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# --- Console logging --------------------------------------------------------------
+# Surface our own pipeline logs + every outbound gateway HTTP call so the live AI
+# verification is visible in the server console. Set LOG_LEVEL=DEBUG in backend/.env
+# for full OpenAI SDK request/response detail.
+_LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=_LOG_LEVEL,
+    format="%(asctime)s %(levelname)-7s %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+)
+# httpx logs one INFO line per request ("HTTP Request: POST .../chat/completions 200 OK").
+logging.getLogger("httpx").setLevel(logging.INFO)
+# The OpenAI SDK emits full request/response bodies at DEBUG; honour OPENAI_LOG too.
+logging.getLogger("openai").setLevel(_LOG_LEVEL)
+logging.getLogger("vost.verification").setLevel(logging.DEBUG)
 
 from ingestion import IngestionService, IngestionSettings, default_connectors
 from logic.geospatial import cluster_reports

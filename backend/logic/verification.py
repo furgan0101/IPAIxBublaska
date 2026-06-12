@@ -22,6 +22,7 @@ clustering step and are never produced here.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass
@@ -248,6 +249,21 @@ def analyze_with_llm(report: RawReport) -> Assessment:
     except ValidationError:
         logger.warning("Unparseable LLM output for %s: %.200s", report.id, raw)
         return Assessment(False, "AI Parsing Error", 0.0)
+
+    # Pretty-print the structured verdict, with the 0-100% trust score made explicit.
+    verdict = {
+        "report_id": report.id,
+        "author": report.author,
+        "trustworthiness_pct": round(analysis.credibility_score * 100),
+        "is_credible": analysis.is_credible,
+        "event_type": analysis.event_type,
+        "credibility_score": analysis.credibility_score,
+        "reason_flagged": analysis.reason_flagged,
+    }
+    print(
+        f"[LLM VERDICT]\n{json.dumps(verdict, indent=2, ensure_ascii=False)}",
+        flush=True,
+    )
 
     event_type = analysis.event_type.strip().lower() or None
     if analysis.is_credible:
