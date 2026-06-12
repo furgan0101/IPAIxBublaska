@@ -19,11 +19,18 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>("landing");
   const [theme, setTheme] = useState<Theme>("dark");
 
-  // The pre-paint script in layout.tsx has already set the class; sync state.
+  // Sync state with localStorage to ensure correctness after hydration.
   useEffect(() => {
-    setTheme(
-      document.documentElement.classList.contains("dark") ? "dark" : "light",
-    );
+    let saved: Theme | null = null;
+    try {
+      saved = localStorage.getItem(THEME_KEY) as Theme;
+    } catch {
+      // ignore
+    }
+    const activeTheme = saved === "light" ? "light" : "dark";
+    setTheme(activeTheme);
+    document.documentElement.classList.toggle("dark", activeTheme === "dark");
+
     // Deep link straight into the dashboard (demos, kiosk mode, screenshots).
     if (new URLSearchParams(window.location.search).has("dashboard")) {
       setPhase("dashboard");

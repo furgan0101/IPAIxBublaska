@@ -22,9 +22,15 @@ export default function AnalyticsPage() {
   const { incidents, debunked, health, online } = useDashboard();
 
   useEffect(() => {
-    setTheme(
-      document.documentElement.classList.contains("dark") ? "dark" : "light",
-    );
+    let saved: Theme | null = null;
+    try {
+      saved = localStorage.getItem(THEME_KEY) as Theme;
+    } catch {
+      // ignore
+    }
+    const activeTheme = saved === "light" ? "light" : "dark";
+    setTheme(activeTheme);
+    document.documentElement.classList.toggle("dark", activeTheme === "dark");
   }, []);
 
   const toggleTheme = useCallback(() => {
