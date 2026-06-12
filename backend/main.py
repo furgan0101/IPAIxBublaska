@@ -8,7 +8,14 @@ Pipeline (runs at startup, and again per live injection):
 
 Live demo:
     POST /api/reports  -> push one report through the pipeline, update state
-    POST /api/reset    -> restore the initial mock state (repeat the demo)
+    POST /api/reset    -> restore the initial state (mock reload / live re-poll)
+
+Real data (FEEDS_ENABLED=true in backend/.env):
+    ingestion.IngestionService polls keyless open sources (NINA warnings,
+    Presseportal police RSS, Mastodon hashtags), runs every new report through
+    the same credibility filter + clustering, and publishes the snapshot
+    served below. POST /api/poll triggers a cycle on demand. Without the flag
+    the synthetic mock feed is served exactly as before (offline default).
 
 Mock timestamps are rebased to "now" at startup so the dashboard always reads
 "x minutes ago" in a live demo, while every relative delta (e.g. the stale
@@ -16,8 +23,9 @@ EXIF gap on recycled footage) is preserved.
 """
 from __future__ import annotations
 
+import asyncio
 import json
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, TypedDict
@@ -25,6 +33,7 @@ from typing import AsyncIterator, TypedDict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from ingestion import IngestionService, IngestionSettings, default_connectors
 from logic.geospatial import cluster_reports
 from logic.verification import ai_mode, apply_event_type, assess_report, filter_reports
 from schemas import (
@@ -59,6 +68,21 @@ class PipelineState(TypedDict):
 # In-memory store. Credible raw reports are kept so live injections can be
 # re-clustered against the existing set without re-reading the feed.
 state: PipelineState = {"credible": [], "incidents": [], "debunked": [], "live_seq": 0}
+
+# Live ingestion (FEEDS_ENABLED=true): created during lifespan, None in mock mode.
+ingestion_service: IngestionService | None = None
+_ingest_task: asyncio.Task[None] | None = None
+
+
+def _publish_snapshot(
+    credible: list[RawReport],
+    incidents: list[VerifiedIncident],
+    debunked: list[DebunkedReport],
+) -> None:
+    """Swap the served pipeline state (callback for the ingestion service)."""
+    state["credible"] = credible
+    state["incidents"] = incidents
+    state["debunked"] = debunked
 
 
 def load_raw_reports(path: Path = DATA_FILE) -> list[RawReport]:
@@ -130,6 +154,8 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
             credibility_score=assessment.score,
         )
         state["debunked"].insert(0, debunked)  # newest first
+        if ingestion_service is not None:
+            ingestion_service.persist_manual(report, assessment)
         return SubmissionResult(
             verdict="debunked",
             report_id=report.id,
@@ -137,7 +163,10 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
             message=f"Debunked by AI filter — {debunked.reason_flagged}",
         )
 
-    state["credible"].append(apply_event_type(report, assessment))
+    verified = apply_event_type(report, assessment)
+    if ingestion_service is not None:
+        ingestion_service.persist_manual(verified, assessment)
+    state["credible"].append(verified)
     state["incidents"] = cluster_reports(state["credible"])
     incident = next((i for i in state["incidents"] if report.id in i.source_ids), None)
     if incident is None:  # defensive: a credible report always lands in a cluster
@@ -164,8 +193,25 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    reset_state()
+    global ingestion_service, _ingest_task
+    settings = IngestionSettings.from_env()
+    if settings.enabled:
+        ingestion_service = IngestionService(
+            settings, default_connectors(settings), publish=_publish_snapshot
+        )
+        await ingestion_service.startup()  # persisted snapshot served instantly
+        _ingest_task = asyncio.create_task(ingestion_service.run())
+    else:
+        reset_state()
     yield
+    if _ingest_task is not None:
+        _ingest_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _ingest_task
+        _ingest_task = None
+    if ingestion_service is not None:
+        await ingestion_service.aclose()
+        ingestion_service = None
 
 
 app = FastAPI(
@@ -203,9 +249,12 @@ def post_report(submission: ReportSubmission) -> SubmissionResult:
 
 
 @app.post("/api/reset")
-def post_reset() -> dict[str, str | int]:
-    """Restore the initial mock state (so the demo can be repeated)."""
-    reset_state()
+async def post_reset() -> dict[str, str | int]:
+    """Restore the initial state: mock feed reload, or live wipe + re-poll."""
+    if ingestion_service is not None:
+        await ingestion_service.reset()
+    else:
+        reset_state()
     return {
         "status": "reset",
         "incidents": len(state["incidents"]),
@@ -213,12 +262,29 @@ def post_reset() -> dict[str, str | int]:
     }
 
 
+@app.post("/api/poll")
+async def post_poll() -> dict[str, object]:
+    """Trigger one live ingest cycle on demand (live mode only)."""
+    if ingestion_service is None:
+        return {
+            "status": "mock-mode",
+            "detail": "Set FEEDS_ENABLED=true in backend/.env to poll real feeds.",
+        }
+    stats = await ingestion_service.poll_once()
+    return {"status": "polled", "stats": stats}
+
+
 @app.get("/api/health")
-def health() -> dict[str, str | int]:
-    """Liveness + pipeline stats; `ai_mode` is `mock`, `live-ready`, or `live`."""
-    return {
+def health() -> dict[str, object]:
+    """Liveness + pipeline stats. `ai_mode`: mock / live-ready / live;
+    `data_mode`: live when real-feed ingestion is enabled."""
+    payload: dict[str, object] = {
         "status": "ok",
         "incidents": len(state["incidents"]),
         "debunked": len(state["debunked"]),
         "ai_mode": ai_mode(),
+        "data_mode": "live" if ingestion_service is not None else "mock",
     }
+    if ingestion_service is not None:
+        payload["feeds"] = ingestion_service.status()
+    return payload

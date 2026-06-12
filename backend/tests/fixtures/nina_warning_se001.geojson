@@ -1,0 +1,21 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {"AREADESC": "Stadt Konstanz und Bodenseeufer"},
+   "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+     [
+      [9.10, 47.60],
+      [9.25, 47.60],
+      [9.25, 47.72],
+      [9.10, 47.72],
+      [9.10, 47.60]
+     ]
+    ]
+   }
+  }
+ ]
+}

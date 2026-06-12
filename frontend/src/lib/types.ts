@@ -8,6 +8,8 @@ export interface SourceReport {
   author: string;
   text: string;
   timestamp: string;
+  /** Link to the original post/release (live feeds only). */
+  url?: string | null;
 }
 
 export interface VerifiedIncident {
@@ -37,6 +39,8 @@ export interface DebunkedReport {
   timestamp: string;
   reason_flagged: string;
   credibility_score: number;
+  /** Link to the original post/release (live feeds only). */
+  url?: string | null;
 }
 
 export interface SubmissionResult {
@@ -53,6 +57,8 @@ export interface HealthInfo {
   incidents: number;
   debunked: number;
   ai_mode: "mock" | "live-ready" | "live";
+  /** "live" when real-feed ingestion (FEEDS_ENABLED) is active. */
+  data_mode?: "mock" | "live";
 }
 
 /** FastAPI backend base URL (override via NEXT_PUBLIC_API_URL). */
