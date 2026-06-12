@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Crosshair, LogOut, ShieldAlert } from "lucide-react";
 
 import type { RiskLevel } from "@/lib/mockReports";
+import { safeNewDate } from "@/lib/format";
 
 const RISK_CHIP: Record<RiskLevel, string> = {
   High: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
@@ -49,7 +50,7 @@ export default function CommandBanner({
     return () => window.clearInterval(timer);
   }, []);
 
-  const zero = firstSignal ? new Date(firstSignal).getTime() : null;
+  const zero = firstSignal ? safeNewDate(firstSignal).getTime() : null;
 
   return (
     <div className="shrink-0 border-b border-border bg-background">

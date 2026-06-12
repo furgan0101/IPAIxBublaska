@@ -8,6 +8,7 @@
  * data goes from static mock to live backend.
  */
 
+import { safeNewDate } from "@/lib/format";
 import {
   type CrisisReport,
   type Credibility,
@@ -183,6 +184,6 @@ export function toCrisisReports(
     ...debunked.map(debunkedToReport),
   ].sort(
     (a, b) =>
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
   );
 }

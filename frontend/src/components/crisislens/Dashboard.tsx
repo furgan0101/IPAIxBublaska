@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, RotateCcw } from "lucide-react";
+import { Activity, BarChart3, RotateCcw } from "lucide-react";
 
 import {
   MOCK_REPORTS,
@@ -20,7 +20,7 @@ import {
   type PlacedMeasure,
 } from "@/lib/measures";
 import { useDashboard } from "@/hooks/useDashboard";
-import { timeAgo } from "@/lib/format";
+import { safeNewDate, timeAgo } from "@/lib/format";
 import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
@@ -262,7 +262,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     () =>
       [...scopedReports].sort(
         (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+          safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
       ),
     [scopedReports],
   );
@@ -339,6 +339,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
               Reset View
             </button>
           )}
+
+          <a
+            href="/analytics"
+            className="hidden items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex"
+            title="Signal analytics"
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+          </a>
 
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
