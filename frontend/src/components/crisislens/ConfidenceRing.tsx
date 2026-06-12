@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 
 /** Sub-score colour: green = strong evidence, amber = mixed, red = weak. */
 function strengthColor(value: number): string {
-  if (value >= 70) return "#34d399";
-  if (value >= 45) return "#fbbf24";
-  return "#f87171";
+  if (value >= 70) return "#059669";
+  if (value >= 45) return "#d97706";
+  return "#dc2626";
 }
 
 interface BreakdownItem {
@@ -71,7 +71,7 @@ export default function ConfidenceRing({
             cy={SIZE / 2}
             r={RADIUS}
             fill="none"
-            stroke="#1b2a45"
+            stroke="var(--muted)"
             strokeWidth={STROKE}
           />
           <circle
@@ -85,30 +85,29 @@ export default function ConfidenceRing({
             strokeDasharray={CIRCUMFERENCE}
             strokeDashoffset={CIRCUMFERENCE * (1 - shown / 100)}
             transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
-            style={{ filter: `drop-shadow(0 0 6px ${color}66)` }}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-display text-4xl font-semibold tabular-nums">
+          <span className="font-display text-4xl font-semibold tabular-nums text-foreground">
             {Math.round(shown)}%
           </span>
-          <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+          <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
             AI-assisted
           </span>
         </div>
       </div>
 
-      <p className="mt-2 text-[11px] text-slate-500">
+      <p className="mt-2.5 text-[11px] text-muted-foreground">
         Plausibility estimate — not a ground-truth verdict
       </p>
 
-      <div className="mt-4 w-full space-y-2.5">
+      <div className="mt-5 w-full space-y-3">
         {breakdown.map((item) => (
           <div key={item.label} className="flex items-center gap-3">
-            <span className="w-32 shrink-0 text-[11px] text-slate-400">
+            <span className="w-32 shrink-0 text-[11px] text-muted-foreground">
               {item.label}
             </span>
-            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-night-700">
+            <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
               <div
                 className="h-full rounded-full"
                 style={{
@@ -117,7 +116,7 @@ export default function ConfidenceRing({
                 }}
               />
             </div>
-            <span className="w-8 shrink-0 text-right font-mono text-[11px] tabular-nums text-slate-300">
+            <span className="w-8 shrink-0 text-right font-mono text-[11px] tabular-nums text-foreground">
               {Math.round(item.value * progress)}
             </span>
           </div>

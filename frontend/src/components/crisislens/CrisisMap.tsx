@@ -63,16 +63,23 @@ function MapController({ selected }: { selected: CrisisReport | null }) {
   return null;
 }
 
+const TILE_URLS = {
+  dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+  light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+} as const;
+
 interface CrisisMapProps {
   reports: CrisisReport[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  theme: "dark" | "light";
 }
 
 export default function CrisisMap({
   reports,
   selectedId,
   onSelect,
+  theme,
 }: CrisisMapProps) {
   const selected = reports.find((r) => r.id === selectedId) ?? null;
 
@@ -96,8 +103,9 @@ export default function CrisisMap({
       zoomControl
     >
       <TileLayer
+        key={theme}
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        url={TILE_URLS[theme]}
       />
 
       <MapController selected={selected} />
@@ -121,15 +129,15 @@ export default function CrisisMap({
               className="cl-tooltip"
             >
               <div className="min-w-[170px] space-y-1 text-xs">
-                <p className="font-semibold text-slate-100">
+                <p className="font-semibold text-foreground">
                   {report.crisisType}
                 </p>
-                <p className="text-slate-400">{report.city}</p>
+                <p className="text-muted-foreground">{report.city}</p>
                 <p className="flex items-center justify-between gap-4 pt-0.5">
                   <span className={`font-semibold ${meta.text}`}>
                     {meta.label}
                   </span>
-                  <span className="font-mono tabular-nums text-slate-300">
+                  <span className="font-mono tabular-nums text-foreground">
                     {report.confidence}%
                   </span>
                 </p>

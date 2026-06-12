@@ -60,7 +60,7 @@ export const STATUS_META: Record<
   {
     label: string;
     badge: string;
-    /** Hex used for map nodes / ring gauges. */
+    /** Hex used for map nodes / ring gauges (works on both basemaps). */
     color: string;
     chip: string;
     dot: string;
@@ -70,26 +70,26 @@ export const STATUS_META: Record<
   relevant: {
     label: "Escalated",
     badge: "Escalated · evidence-based",
-    color: "#ef4444",
-    chip: "border-red-500/40 bg-red-500/10 text-red-300",
-    dot: "bg-red-500",
-    text: "text-red-400",
+    color: "#dc2626",
+    chip: "border-red-600/25 bg-red-600/10 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300",
+    dot: "bg-red-600 dark:bg-red-500",
+    text: "text-red-700 dark:text-red-400",
   },
   review: {
     label: "Needs review",
     badge: "Human review required",
-    color: "#f97316",
-    chip: "border-orange-500/40 bg-orange-500/10 text-orange-300",
-    dot: "bg-orange-500",
-    text: "text-orange-400",
+    color: "#ea580c",
+    chip: "border-orange-600/25 bg-orange-600/10 text-orange-700 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300",
+    dot: "bg-orange-600 dark:bg-orange-500",
+    text: "text-orange-700 dark:text-orange-400",
   },
   ignored: {
     label: "Ignored",
     badge: "Ignored · insufficient corroboration",
     color: "#eab308",
-    chip: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
+    chip: "border-yellow-600/30 bg-yellow-500/10 text-yellow-700 dark:border-yellow-500/30 dark:bg-yellow-500/10 dark:text-yellow-300",
     dot: "bg-yellow-500",
-    text: "text-yellow-400",
+    text: "text-yellow-700 dark:text-yellow-400",
   },
 };
 
