@@ -9,10 +9,10 @@ interface ReportTimelineProps {
 }
 
 /** Number of hourly buckets to display. */
-const BUCKET_COUNT = 24;
+const BUCKET_COUNT = 12;
 
 /**
- * 24-hour bar chart showing report volume per hour — styled like a
+ * 12-hour bar chart showing report volume per hour — styled like a
  * Downdetector-style area/bar chart with the CrisisLens dark palette.
  */
 export default function ReportTimeline({ reports }: ReportTimelineProps) {
@@ -31,17 +31,16 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
       }
     }
 
-    // Generate hour labels for the x-axis (every 3 hours).
+    // Generate hour labels for the x-axis (every 2 hours).
     const hourLabels: { index: number; text: string }[] = [];
     for (let i = 0; i < BUCKET_COUNT; i++) {
-      if (i % 3 === 0 || i === BUCKET_COUNT - 1) {
+      if (i % 2 === 0 || i === BUCKET_COUNT - 1) {
         const bucketTime = new Date(now - (BUCKET_COUNT - 1 - i) * msPerBucket);
         hourLabels.push({
           index: i,
           text: bucketTime.toLocaleTimeString("de-DE", {
             hour: "2-digit",
-            minute: "2-digit",
-          }),
+          }) + "h",
         });
       }
     }
@@ -56,19 +55,19 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
   const total = buckets.reduce((s, n) => s + n, 0);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1.5">
       {/* Header */}
       <div className="flex items-baseline justify-between">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-          Reports in the last 24 hours
+        <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+          12h Signal Volume
         </h3>
-        <span className="font-mono text-xs tabular-nums text-foreground">
-          {total} total
+        <span className="font-mono text-[10px] tabular-nums text-foreground">
+          {total} signals
         </span>
       </div>
 
       {/* Chart area */}
-      <div className="relative flex h-28 items-end gap-px">
+      <div className="relative flex h-16 items-end gap-px">
         {buckets.map((count, i) => {
           const pct = (count / maxCount) * 100;
           // Colour: gold accent for bars with reports, muted for empty.

@@ -92,6 +92,12 @@ body {
 
 /* ------------------------------------------------------------- leaflet */
 
+/* Theme class is set directly on the map wrapper div (via CrisisMap theme prop)
+   so this selector is reliable regardless of global .dark cascade issues. */
+.map-theme-dark .leaflet-tile-pane {
+  filter: contrast(1.25) brightness(1.1);
+}
+
 /* Leaflet needs an explicit size on its container; it fills its flex parent. */
 .leaflet-container {
   height: 100%;

@@ -29,6 +29,7 @@ import TagFilter from "./TagFilter";
 import CityFocusPicker from "./CityFocusPicker";
 import CommandBanner from "./CommandBanner";
 import CommandConsole from "./CommandConsole";
+import ReportTimeline from "./ReportTimeline";
 import MeasurePalette from "./MeasurePalette";
 
 // Leaflet touches `window` — load the map strictly client-side.
@@ -351,19 +352,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             <BarChart3 className="h-3.5 w-3.5" />
           </a>
 
-          <button
-            type="button"
-            onClick={() => setFeedOpen((o) => !o)}
-            title={feedOpen ? "Collapse signals feed" : "Expand signals feed"}
-            className="hidden rounded-md border border-border bg-card p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:block"
-          >
-            {feedOpen ? (
-              <PanelLeftClose className="h-4 w-4" />
-            ) : (
-              <PanelLeftOpen className="h-4 w-4" />
-            )}
-          </button>
-
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </header>
@@ -391,7 +379,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
             <Activity className="h-4 w-4 text-gold" />
             <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
-              Latest Signals
+              News Feed
             </h2>
             <span className="ml-auto rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
               {feed.length}
@@ -399,6 +387,9 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
 
           <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
+              <ReportTimeline reports={feed} />
+            </div>
             {feed.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
                 No signals in the current window yet — the pipeline is polling
@@ -457,6 +448,20 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
         {/* Map column */}
         <main className="relative min-w-0 flex-1">
+          {/* Feed toggle — anchored to the left edge of the map so it's always visible */}
+          <button
+            type="button"
+            onClick={() => setFeedOpen((o) => !o)}
+            title={feedOpen ? "Collapse signals feed" : "Expand signals feed"}
+            className="absolute left-0 top-1/2 z-[1000] hidden -translate-x-1/2 -translate-y-1/2 rounded-full border border-border bg-card p-1.5 text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground lg:flex"
+          >
+            {feedOpen ? (
+              <PanelLeftClose className="h-3.5 w-3.5" />
+            ) : (
+              <PanelLeftOpen className="h-3.5 w-3.5" />
+            )}
+          </button>
+
           <CrisisMap
             reports={scopedReports}
             selectedId={selectedId}
@@ -486,28 +491,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
 
-          {/* Triage legend */}
-          <div className="pointer-events-none absolute bottom-4 left-4 z-[1000] rounded-lg border border-border bg-card/95 px-4 py-3 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              AI-assisted triage
-            </p>
-            <ul className="mt-2 space-y-1.5">
-              {(
-                Object.keys(STATUS_META) as (keyof typeof STATUS_META)[]
-              ).map((status) => (
-                <li
-                  key={status}
-                  className="flex items-center gap-2.5 text-xs text-foreground"
-                >
-                  <span
-                    className={`h-2 w-2 rounded-full ${STATUS_META[status].dot}`}
-                    aria-hidden
-                  />
-                  {STATUS_META[status].badge}
-                </li>
-              ))}
-            </ul>
-          </div>
         </main>
 
         {/* Command console — LISTEN + RESPOND for the focused city. It
