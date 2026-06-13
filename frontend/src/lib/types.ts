@@ -18,6 +18,12 @@ export interface SourceReport {
   ai_media_note?: string | null;
 }
 
+export interface SOPTask {
+  task: string;
+  agency: string;
+  completed: boolean;
+}
+
 export interface VerifiedIncident {
   id: string;
   event_type: string;
@@ -31,6 +37,14 @@ export interface VerifiedIncident {
   summary: string;
   severity: Severity;
   action_hint: string;
+  /** True once the incident was handed to the Leitstelle (manual or auto). */
+  dispatched: boolean;
+  /** ISO timestamp of the handoff. */
+  dispatched_at?: string | null;
+  /** Security-sensitive incident — information discipline applies. */
+  classified: boolean;
+  /** Itemized SOP checklist for responders. */
+  sop_tasks: SOPTask[];
   sources: SourceReport[];
 }
 

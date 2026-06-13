@@ -9,6 +9,12 @@ Pipeline (runs at startup, and again per live injection):
 Live demo:
     POST /api/reports  -> push one report through the pipeline, update state
     POST /api/reset    -> restore the initial state (mock reload / live re-poll)
+    POST /api/incidents/{id}/dispatch -> manual Leitstelle handoff (marks the
+        incident dispatched, completes its SOP checklist, prints the payload)
+
+High-severity incidents with confidence >= 0.85 are dispatched automatically
+([AUTO-ALERT] on the console); security-sensitive classes (terror, hostage,
+CBRN) carry `classified=true` so the frontend enforces information discipline.
 
 Real data (FEEDS_ENABLED=true in backend/.env):
     ingestion.IngestionService polls keyless open sources (NINA warnings,
@@ -28,11 +34,12 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import AsyncIterator, TypedDict
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 # --- Console logging --------------------------------------------------------------
@@ -55,13 +62,15 @@ import httpx
 from ingestion import IngestionService, IngestionSettings, default_connectors
 from ingestion.geocode import Geocoder
 from ingestion.storage import FeedStore
-from logic.geospatial import cluster_reports
+from logic.geospatial import RADIUS_KM, cluster_reports
 from logic.verification import (
     ai_mode,
     annotate_report,
     assess_report,
+    auto_dispatch,
     budget_status,
     filter_reports,
+    should_auto_dispatch,
 )
 from schemas import (
     DebunkedReport,
@@ -105,6 +114,111 @@ _geocoder: Geocoder | None = None
 _geo_client: httpx.AsyncClient | None = None
 
 
+@dataclass(frozen=True)
+class _DispatchRecord:
+    """Dispatch is sticky per incident id: re-clustering rebuilds incidents
+    from scratch, so the state must be re-applied from this registry. In live
+    mode the registry is backed by SQLite (ingestion store), so dispatches
+    survive a backend restart; in mock mode it is purely in-memory."""
+
+    at: datetime
+    # SOP task descriptions completed at handoff. Non-empty => manual handoff
+    # (worked the checklist); empty => automatic alert (dispatch only).
+    completed_tasks: tuple[str, ...] = ()
+
+
+_dispatch_registry: dict[str, _DispatchRecord] = {}
+# Live mode: the persisted dispatch table is loaded into the registry once,
+# the first time a snapshot is (re)built, so a restart re-applies dispatches.
+_dispatch_hydrated: bool = False
+
+
+def _hydrate_dispatch_registry() -> None:
+    """Load persisted dispatch state (live mode) into the in-memory registry,
+    once. No-op in mock mode — there is no store to read."""
+    global _dispatch_hydrated
+    if _dispatch_hydrated or ingestion_service is None:
+        return
+    for incident_id, persisted in ingestion_service.load_dispatch_state().items():
+        _dispatch_registry[incident_id] = _DispatchRecord(
+            at=persisted.dispatched_at,
+            completed_tasks=tuple(persisted.completed_tasks),
+        )
+    _dispatch_hydrated = True
+
+
+def _persist_dispatch(record_id: str, record: _DispatchRecord) -> None:
+    """Write a dispatch record through to the SQLite store (live mode only)."""
+    if ingestion_service is not None:
+        ingestion_service.record_dispatch(
+            record_id, record.at, list(record.completed_tasks)
+        )
+
+
+def _apply_dispatch_state(
+    incidents: list[VerifiedIncident],
+) -> list[VerifiedIncident]:
+    """Re-apply known dispatch state after (re-)clustering and fire the
+    Automatic Alert Dispatch for newly qualifying incidents (high severity +
+    confidence >= 0.85). The console alert prints once per incident."""
+    _hydrate_dispatch_registry()
+    result: list[VerifiedIncident] = []
+    for incident in incidents:
+        record = _dispatch_registry.get(incident.id)
+        if record is not None:
+            update: dict[str, object] = {"dispatched": True, "dispatched_at": record.at}
+            if record.completed_tasks:
+                done = set(record.completed_tasks)
+                update["sop_tasks"] = [
+                    task.model_copy(
+                        update={"completed": task.completed or task.task in done}
+                    )
+                    for task in incident.sop_tasks
+                ]
+            incident = incident.model_copy(update=update)
+        elif should_auto_dispatch(incident):
+            incident = auto_dispatch(incident)
+            record = _DispatchRecord(
+                at=incident.dispatched_at or datetime.now(timezone.utc)
+            )
+            _dispatch_registry[incident.id] = record
+            _persist_dispatch(incident.id, record)
+        result.append(incident)
+    return result
+
+
+def _print_dispatch_payload(incident: VerifiedIncident) -> None:
+    """Simulated handoff to the Integrierte Leitstelle (control centre)."""
+    stamp = incident.dispatched_at or datetime.now(timezone.utc)
+    rule = "=" * 74
+    lines = [
+        rule,
+        "EMERGENCY DISPATCH PAYLOAD -> Integrierte Leitstelle Konstanz",
+        rule,
+        f"  Incident:    {incident.id}  ({incident.event_type})",
+        f"  Severity:    {incident.severity.upper()}  |  "
+        f"confidence {round(incident.confidence_score * 100)} %",
+        f"  Position:    {incident.lat:.4f} N, {incident.lon:.4f} E  "
+        f"(cluster radius {RADIUS_KM:.1f} km)",
+        f"  Window:      {incident.first_seen:%Y-%m-%d %H:%M} – "
+        f"{incident.last_seen:%H:%M} UTC  |  "
+        f"{incident.report_count} corroborating report(s)",
+        f"  Action hint: {incident.action_hint}",
+        "  SOP tasks:",
+        *(
+            f"    [{'x' if task.completed else ' '}] {task.task} — {task.agency}"
+            for task in incident.sop_tasks
+        ),
+    ]
+    if incident.classified:
+        lines.append(
+            "  INFORMATION DISCIPLINE: ACTIVE — secure handoff to Police Command."
+        )
+    lines.append(f"  Dispatched:  {stamp:%Y-%m-%d %H:%M:%S} UTC")
+    lines.append(rule)
+    print("\n".join(lines), flush=True)
+
+
 def _publish_snapshot(
     credible: list[RawReport],
     incidents: list[VerifiedIncident],
@@ -112,7 +226,7 @@ def _publish_snapshot(
 ) -> None:
     """Swap the served pipeline state (callback for the ingestion service)."""
     state["credible"] = credible
-    state["incidents"] = incidents
+    state["incidents"] = _apply_dispatch_state(incidents)
     state["debunked"] = debunked
 
 
@@ -138,17 +252,18 @@ def rebase_timestamps(reports: list[RawReport], now: datetime) -> list[RawReport
 def run_pipeline(reports: list[RawReport]) -> PipelineResult:
     """Credibility filter first, then geo-clustering of the credible remainder."""
     credible, debunked = filter_reports(reports)
-    incidents = cluster_reports(credible)
+    incidents = _apply_dispatch_state(cluster_reports(credible))
     return {"incidents": incidents, "debunked": debunked}
 
 
 def reset_state() -> None:
     """(Re)load the mock feed and rebuild the in-memory pipeline state."""
+    _dispatch_registry.clear()
     reports = rebase_timestamps(load_raw_reports(), now=datetime.now(timezone.utc))
     credible, debunked = filter_reports(reports)
     state["credible"] = credible
     state["debunked"] = debunked
-    state["incidents"] = cluster_reports(credible)
+    state["incidents"] = _apply_dispatch_state(cluster_reports(credible))
     state["live_seq"] = 0
 
 
@@ -201,7 +316,7 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
     if ingestion_service is not None:
         ingestion_service.persist_manual(report, assessment)
     state["credible"].append(report)
-    state["incidents"] = cluster_reports(state["credible"])
+    state["incidents"] = _apply_dispatch_state(cluster_reports(state["credible"]))
     incident = next((i for i in state["incidents"] if report.id in i.source_ids), None)
     if incident is None:  # defensive: a credible report always lands in a cluster
         return SubmissionResult(
@@ -296,10 +411,41 @@ def post_report(submission: ReportSubmission) -> SubmissionResult:
     return submit_report(submission)
 
 
+@app.post("/api/incidents/{incident_id}/dispatch", response_model=VerifiedIncident)
+def dispatch_incident(incident_id: str) -> VerifiedIncident:
+    """Manual handoff to the Leitstelle: mark the incident dispatched,
+    complete its SOP checklist and print the dispatch payload to the
+    operations console (simulating the control-centre interface)."""
+    for index, incident in enumerate(state["incidents"]):
+        if incident.id != incident_id:
+            continue
+        stamp = incident.dispatched_at or datetime.now(timezone.utc)
+        updated = incident.model_copy(
+            update={
+                "dispatched": True,
+                "dispatched_at": stamp,
+                "sop_tasks": [
+                    task.model_copy(update={"completed": True})
+                    for task in incident.sop_tasks
+                ],
+            }
+        )
+        state["incidents"][index] = updated
+        record = _DispatchRecord(
+            at=stamp, completed_tasks=tuple(task.task for task in updated.sop_tasks)
+        )
+        _dispatch_registry[incident_id] = record
+        _persist_dispatch(incident_id, record)  # survive rebuild / restart (live)
+        _print_dispatch_payload(updated)
+        return updated
+    raise HTTPException(status_code=404, detail=f"Unknown incident: {incident_id}")
+
+
 @app.post("/api/reset")
 async def post_reset() -> dict[str, str | int]:
     """Restore the initial state: mock feed reload, or live wipe + re-poll."""
     if ingestion_service is not None:
+        _dispatch_registry.clear()
         await ingestion_service.reset()
     else:
         reset_state()
@@ -345,8 +491,8 @@ async def get_geocode(q: str) -> dict[str, object]:
     if _geocoder is None or _geo_client is None:
         return {"error": "Geocoder not initialized"}
 
-    # Geocoder.resolve(client, place_hint, text)
-    coords = await _geocoder.resolve(_geo_client, q, "")
+    # Geocoder.resolve(client, place_hint, text, bounded)
+    coords = await _geocoder.resolve(_geo_client, q, "", bounded=False)
     if coords:
         return {"lat": coords[0], "lon": coords[1]}
     return {"error": "Location not found"}

@@ -213,6 +213,44 @@ body {
   border: 2px solid var(--foreground);
 }
 
+/* Security-classified incidents: lock badge instead of a signal dot
+   (information discipline — see DetailPanel's restricted dossier). */
+.cl-node-lock {
+  position: relative;
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #7c3aed;
+  border: 2px solid var(--card);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.cl-node-lock svg {
+  width: 58%;
+  height: 58%;
+}
+
+.cl-node-lock::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid #7c3aed;
+  animation: cl-pulse 2.6s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+}
+
+.cl-node-lock--selected::after {
+  content: "";
+  position: absolute;
+  inset: -22%;
+  border-radius: 9999px;
+  border: 2px solid var(--foreground);
+}
+
 @keyframes cl-pulse {
   0% {
     transform: scale(0.55);
@@ -225,6 +263,15 @@ body {
   100% {
     transform: scale(1.85);
     opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-node-ring,
+  .cl-node-lock::before {
+    animation: none;
+    transform: none;
+    opacity: 0.4;
   }
 }
 
@@ -257,6 +304,41 @@ body {
 
 .cl-fade-in {
   animation: cl-fade 0.5s ease-out both;
+}
+
+/* Scroll-triggered reveal for below-the-fold landing sections. Hidden until
+   the element crosses the viewport (toggled by the <Reveal> observer), then
+   rises into place. Reduced-motion users get the content immediately. */
+.cl-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.cl-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Hairline dot-grid backdrop for landing bands — flat, single-colour dots
+   (no gradient fill), in keeping with the no-gradients rule. */
+.cl-dotgrid {
+  background-image: radial-gradient(
+    currentColor 0.5px,
+    transparent 0.5px
+  );
+  background-size: 22px 22px;
+  color: var(--border);
 }
 
 /* Thin themed scrollbars for panels and feeds. */
@@ -333,5 +415,254 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------- command mode */
+
+/* Black/gold civil-protection caution stripe — Command Mode's signature
+   rule. A flat two-colour pattern, in keeping with the no-gradients rule. */
+.cl-hazard {
+  background: repeating-linear-gradient(
+    -45deg,
+    #0c0c0d 0px,
+    #0c0c0d 10px,
+    var(--gold-fill) 10px,
+    var(--gold-fill) 20px
+  );
+}
+
+/* Measures Layer — operational pins the official places in Command Mode. */
+.cl-measure-wrap {
+  background: transparent;
+  border: none;
+}
+
+.cl-measure {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 9px;
+  background: var(--measure);
+  color: #ffffff;
+  border: 2px solid var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.cl-measure--planned {
+  border-style: dashed;
+}
+
+.cl-measure--done {
+  opacity: 0.55;
+}
+
+.cl-measure--hover,
+.cl-measure:hover {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--measure) 35%, transparent);
+}
+
+.cl-measure--selected::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 12px;
+  border: 2px solid var(--foreground);
+}
+
+/* Grab-dot for resizing an action zone. */
+.cl-zone-handle {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--card);
+  border: 3px solid #ea580c;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: ew-resize;
+}
+
+/* Crosshair while a palette tool is armed. */
+.cl-armed .leaflet-container,
+.cl-armed .leaflet-interactive {
+  cursor: crosshair;
+}
+
+/* ------------------------------------------- printable Lagebericht (PDF)
+   The structured situation report (LageberichtPrint) sits in the DOM but is
+   hidden on screen; the print stylesheet hides the live dashboard and renders
+   it as a clean, high-contrast black-on-white paper document. */
+.print-doc {
+  display: none;
+}
+
+@media print {
+  /* Force a printer-friendly light theme regardless of the dark-mode class,
+     and lift the app's full-height / clipped wrappers so a multi-page report
+     paginates instead of being cut off at one screen height. */
+  html,
+  body,
+  .cl-root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+  }
+
+  /* Hide the entire interactive app shell: map, sidebars, toolbars, toggles,
+     buttons, toasts — everything except the report document. */
+  .cl-app-shell {
+    display: none !important;
+  }
+
+  @page {
+    margin: 16mm 14mm;
+  }
+
+  .print-doc {
+    display: block !important;
+    color: #000000;
+    background: #ffffff;
+    font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-doc h1,
+  .print-doc h2,
+  .print-doc p,
+  .print-doc td,
+  .print-doc th {
+    color: inherit;
+  }
+
+  .print-head {
+    border-bottom: 3px solid #000000;
+    padding-bottom: 8px;
+    margin-bottom: 18px;
+  }
+
+  .print-head h1 {
+    margin: 0;
+    font-size: 18pt;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+  }
+
+  .print-sub {
+    margin: 5px 0 0;
+    font-size: 10pt;
+    color: #222222;
+  }
+
+  .print-section {
+    margin-bottom: 18px;
+    break-inside: avoid;
+  }
+
+  .print-section h2 {
+    margin: 0 0 8px;
+    font-size: 12pt;
+    font-weight: 700;
+    border-bottom: 1px solid #000000;
+    padding-bottom: 3px;
+  }
+
+  .print-para {
+    margin: 0 0 6px;
+    font-size: 9.5pt;
+  }
+
+  /* Key/value facts table for the single-incident dossier. */
+  .print-kv {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9.5pt;
+  }
+
+  .print-kv th {
+    width: 34%;
+    border: 1px solid #000000;
+    padding: 4px 6px;
+    text-align: left;
+    vertical-align: top;
+    background: #f0f0f0;
+    font-weight: 700;
+  }
+
+  .print-kv td {
+    border: 1px solid #000000;
+    padding: 4px 6px;
+    vertical-align: top;
+  }
+
+  .print-metrics {
+    display: flex;
+    gap: 20px;
+  }
+
+  .print-metric {
+    flex: 1;
+    border: 1.5px solid #000000;
+    padding: 8px 14px;
+  }
+
+  .print-metric-num {
+    display: block;
+    font-size: 24pt;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .print-metric-label {
+    display: block;
+    margin-top: 4px;
+    font-size: 8pt;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #222222;
+  }
+
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+
+  .print-table th,
+  .print-table td {
+    border: 1px solid #000000;
+    padding: 4px 6px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .print-table th {
+    background: #000000;
+    color: #ffffff;
+    font-weight: 700;
+  }
+
+  .print-table tbody tr:nth-child(even) td {
+    background: #f0f0f0;
+  }
+
+  .print-empty {
+    margin: 0;
+    font-size: 9pt;
+    font-style: italic;
+    color: #333333;
+  }
+
+  .print-foot {
+    margin-top: 22px;
+    border-top: 1px solid #000000;
+    padding-top: 6px;
+    font-size: 8pt;
+    color: #333333;
   }
 }

@@ -1,12 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, Circle, useMapEvents } from "react-leaflet";
+import { createElement, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Circle,
+  MapContainer,
+  Marker,
+  TileLayer,
+  Tooltip,
+  ZoomControl,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import L from "leaflet";
+import { Lock } from "lucide-react";
+import { renderToStaticMarkup } from "react-dom/server";
 import "leaflet/dist/leaflet.css";
 
 import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
-import { MEASURE_KINDS, type PlacedMeasure, type MeasureKind } from "@/lib/measures";
+import {
+  MEASURE_KINDS,
+  MEASURE_STATUS_META,
+  destinationEastOf,
+  formatDistance,
+  geodesicMeters,
+  type MeasureKind,
+  type MeasureStatus,
+  type PlacedMeasure,
+} from "@/lib/measures";
 import {
   BAND_COLORS,
   confidenceBand,
@@ -22,6 +42,12 @@ const FOCUS_ZOOM = 9;
 /** Wait for the detail-panel width transition (500 ms) before flying. */
 const FLY_DELAY_MS = 560;
 
+/** Command Mode focus target — the map flies to the city in command. */
+export interface MapFocus {
+  center: [number, number];
+  zoom: number;
+}
+
 function nodeIcon(color: string, selected: boolean): L.DivIcon {
   const size = selected ? 30 : 22;
   return L.divIcon({
@@ -33,15 +59,255 @@ function nodeIcon(color: string, selected: boolean): L.DivIcon {
   });
 }
 
-function measureIcon(color: string, selected: boolean): L.DivIcon {
-  const size = selected ? 28 : 22;
+/** Security-classified incidents render as a lock badge, not a signal dot —
+ * the marker itself signals "information discipline" clearance. */
+function lockIcon(selected: boolean): L.DivIcon {
+  const size = selected ? 32 : 26;
+  const svg = renderToStaticMarkup(
+    createElement(Lock, { size: 13, strokeWidth: 2.5, "aria-hidden": true }),
+  );
   return L.divIcon({
-    className: "cl-measure-pin",
-    html: `<span class="cl-node${selected ? " cl-node--selected" : ""}" style="--node:${color}; border: 2.5px solid #ffffff; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; width: ${size}px; height: ${size}px;"><span class="cl-node-core" style="background-color: #ffffff; width: 6px; height: 6px; border-radius: 50%;"></span></span>`,
+    className: "cl-node-wrap",
+    html: `<span class="cl-node-lock${selected ? " cl-node-lock--selected" : ""}">${svg}</span>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     tooltipAnchor: [0, -size / 2],
   });
+}
+
+/* ------------------------------------------------------ measures layer */
+
+/** Lazily built divIcons — 11 kinds × 3 statuses × selected × hovered. */
+const measureIconCache = new Map<string, L.DivIcon>();
+
+function measureIcon(
+  kind: MeasureKind,
+  status: MeasureStatus,
+  selected: boolean,
+  hovered: boolean,
+): L.DivIcon {
+  const key = `${kind}-${status}-${selected}-${hovered}`;
+  const cached = measureIconCache.get(key);
+  if (cached) return cached;
+
+  const meta = MEASURE_KINDS[kind];
+  const size = selected ? 34 : 28;
+  const cls = [
+    "cl-measure",
+    `cl-measure--${status}`,
+    selected ? "cl-measure--selected" : "",
+    hovered ? "cl-measure--hover" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const svg = renderToStaticMarkup(
+    createElement(meta.icon, { size: 15, strokeWidth: 2.25, "aria-hidden": true }),
+  );
+  const icon = L.divIcon({
+    className: "cl-measure-wrap",
+    html: `<span class="${cls}" style="--measure:${meta.color}">${svg}</span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    tooltipAnchor: [0, -size / 2],
+  });
+  measureIconCache.set(key, icon);
+  return icon;
+}
+
+/** Small white grab-dot on the zone ring for resizing. */
+const ZONE_HANDLE_ICON = L.divIcon({
+  className: "cl-measure-wrap",
+  html: '<span class="cl-zone-handle"></span>',
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+interface MeasureHandlers {
+  onSelect: (id: string) => void;
+  onHover: (id: string | null) => void;
+  onMove: (id: string, position: [number, number]) => void;
+}
+
+function MeasureTooltip({ measure }: { measure: PlacedMeasure }) {
+  const meta = MEASURE_KINDS[measure.kind];
+  return (
+    <Tooltip direction="top" offset={[0, -8]} opacity={1} className="cl-tooltip">
+      <div className="min-w-[150px] space-y-0.5 text-xs">
+        <p className="font-semibold text-foreground">{measure.label}</p>
+        <p className="text-muted-foreground">
+          {meta.labelEn} · {MEASURE_STATUS_META[measure.status].label}
+        </p>
+        {measure.kind === "zone" && (
+          <p className="font-mono text-muted-foreground">
+            {formatDistance(measure.radiusM ?? 0)} radius
+          </p>
+        )}
+      </div>
+    </Tooltip>
+  );
+}
+
+function MeasureMarker({
+  measure,
+  selected,
+  hovered,
+  onSelect,
+  onHover,
+  onMove,
+}: {
+  measure: PlacedMeasure;
+  selected: boolean;
+  hovered: boolean;
+} & MeasureHandlers) {
+  return (
+    <Marker
+      position={measure.position}
+      icon={measureIcon(measure.kind, measure.status, selected, hovered)}
+      draggable
+      zIndexOffset={selected ? 1200 : 600}
+      eventHandlers={{
+        click: () => onSelect(measure.id),
+        mouseover: () => onHover(measure.id),
+        mouseout: () => onHover(null),
+        dragend: (e) => {
+          const at = (e.target as L.Marker).getLatLng();
+          onMove(measure.id, [at.lat, at.lng]);
+        },
+      }}
+    >
+      <MeasureTooltip measure={measure} />
+    </Marker>
+  );
+}
+
+/**
+ * Action zone: dashed circle + draggable centre pin; when selected, a grab
+ * handle on the eastern edge resizes the radius with a live metric readout.
+ */
+function ZoneMeasure({
+  measure,
+  selected,
+  hovered,
+  onSelect,
+  onHover,
+  onMove,
+  onResize,
+}: {
+  measure: PlacedMeasure;
+  selected: boolean;
+  hovered: boolean;
+  onResize: (id: string, radiusM: number) => void;
+} & MeasureHandlers) {
+  // Live radius preview while the handle is dragged; committed on release.
+  const [preview, setPreview] = useState<number | null>(null);
+  const radius = preview ?? measure.radiusM ?? 500;
+  const meta = MEASURE_KINDS.zone;
+
+  return (
+    <>
+      <Circle
+        center={measure.position}
+        radius={radius}
+        pathOptions={{
+          color: meta.color,
+          weight: selected ? 2.5 : 1.5,
+          dashArray: "6 6",
+          fillColor: meta.color,
+          fillOpacity: selected || hovered ? 0.12 : 0.06,
+        }}
+        eventHandlers={{ click: () => onSelect(measure.id) }}
+      />
+      <MeasureMarker
+        measure={measure}
+        selected={selected}
+        hovered={hovered}
+        onSelect={onSelect}
+        onHover={onHover}
+        onMove={onMove}
+      />
+      {selected && (
+        <Marker
+          position={destinationEastOf(measure.position, radius)}
+          icon={ZONE_HANDLE_ICON}
+          draggable
+          zIndexOffset={1300}
+          eventHandlers={{
+            drag: (e) => {
+              const at = (e.target as L.Marker).getLatLng();
+              setPreview(
+                Math.max(
+                  50,
+                  Math.round(geodesicMeters(measure.position, [at.lat, at.lng])),
+                ),
+              );
+            },
+            dragend: (e) => {
+              const at = (e.target as L.Marker).getLatLng();
+              setPreview(null);
+              onResize(
+                measure.id,
+                Math.max(
+                  50,
+                  Math.round(geodesicMeters(measure.position, [at.lat, at.lng])),
+                ),
+              );
+            },
+          }}
+        >
+          <Tooltip
+            permanent
+            direction="right"
+            offset={[10, 0]}
+            opacity={1}
+            className="cl-tooltip"
+          >
+            <span className="font-mono text-xs tabular-nums text-foreground">
+              {formatDistance(radius)}
+            </span>
+          </Tooltip>
+        </Marker>
+      )}
+    </>
+  );
+}
+
+/** Drops the armed tool on map click — or on Enter, at the map centre. */
+function PlacementCatcher({
+  armed,
+  onPlace,
+}: {
+  armed: boolean;
+  onPlace: (position: [number, number]) => void;
+}) {
+  const map = useMapEvents({
+    click: (e) => {
+      if (armed) onPlace([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+
+  useEffect(() => {
+    if (!armed) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== "Enter") return;
+      const target = e.target as HTMLElement | null;
+      // Don't hijack Enter from text entry — buttons are fine (arming a
+      // palette tool with Enter then drops it at the map centre).
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const centre = map.getCenter();
+      onPlace([centre.lat, centre.lng]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [armed, map, onPlace]);
+
+  return null;
 }
 
 /**
@@ -52,12 +318,30 @@ function measureIcon(color: string, selected: boolean): L.DivIcon {
 function MapController({
   selected,
   focus,
+  panTarget,
 }: {
   selected: CrisisReport | null;
-  focus?: MapFocus | null;
+  focus: MapFocus | null;
+  /** Selected measure — pan (not fly) so plan editing stays in context. */
+  panTarget: { id: string; position: [number, number] } | null;
 }) {
   const map = useMap();
   const firstRun = useRef(true);
+  const lastPannedId = useRef<string | null>(null);
+  // De-dup focus flights: a search/city focus that recomputes to the same
+  // coordinates (e.g. a live poll re-runs the memo) must not re-centre.
+  const lastFocusKey = useRef<string | null>(null);
+
+  // Pan once per measure selection; dragging it must not re-centre the map.
+  useEffect(() => {
+    if (!panTarget) {
+      lastPannedId.current = null;
+      return;
+    }
+    if (lastPannedId.current === panTarget.id) return;
+    lastPannedId.current = panTarget.id;
+    map.panTo(panTarget.position);
+  }, [map, panTarget]);
 
   useEffect(() => {
     const observer = new ResizeObserver(() => {
@@ -67,59 +351,31 @@ function MapController({
     return () => observer.disconnect();
   }, [map]);
 
-  const prevFocusRef = useRef<string | null>(null);
-
   useEffect(() => {
     if (firstRun.current) {
       firstRun.current = false;
       return;
     }
-
     const timer = window.setTimeout(() => {
-      // 1. If an incident is selected, fly to it (overrides everything else)
       if (selected) {
         map.flyTo(selected.coordinates, Math.max(map.getZoom(), FOCUS_ZOOM), {
           duration: 0.9,
         });
-        prevFocusRef.current = null;
-        return;
-      }
-
-      // 2. If a search focus is provided, fly to it
-      if (focus) {
+        lastFocusKey.current = null;
+      } else if (focus) {
         const focusKey = `${focus.center[0]},${focus.center[1]},${focus.zoom}`;
-        if (focusKey !== prevFocusRef.current) {
+        if (focusKey !== lastFocusKey.current) {
           map.flyTo(focus.center, focus.zoom, { duration: 0.9 });
-          prevFocusRef.current = focusKey;
+          lastFocusKey.current = focusKey;
         }
-        return;
+      } else {
+        map.flyTo(BW_CENTER, BW_ZOOM, { duration: 0.9 });
+        lastFocusKey.current = null;
       }
-
-      // 3. Otherwise, return to overview
-      map.flyTo(BW_CENTER, BW_ZOOM, { duration: 0.9 });
-      prevFocusRef.current = null;
     }, FLY_DELAY_MS);
-
     return () => window.clearTimeout(timer);
   }, [map, selected, focus]);
 
-  return null;
-}
-
-function MapEventsHandler({
-  armedTool,
-  onPlaceMeasure,
-}: {
-  armedTool: MeasureKind | null | undefined;
-  onPlaceMeasure: ((position: [number, number]) => void) | undefined;
-}) {
-  useMapEvents({
-    click(e) {
-      if (armedTool && onPlaceMeasure) {
-        onPlaceMeasure([e.latlng.lat, e.latlng.lng]);
-      }
-    },
-  });
   return null;
 }
 
@@ -128,25 +384,20 @@ const TILE_URLS = {
   light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
 } as const;
 
-export interface MapFocus {
-  center: [number, number];
-  zoom: number;
-}
-
 interface CrisisMapProps {
   reports: CrisisReport[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   theme: "dark" | "light";
+  /** Command Mode: fly to and hold the focused city. */
   focus?: MapFocus | null;
-  
-  // Tactical planning measures
+  /** Measures Layer (Command Mode planning) — all optional. */
   measures?: PlacedMeasure[];
   armedTool?: MeasureKind | null;
   selectedMeasureId?: string | null;
   hoveredMeasureId?: string | null;
   onPlaceMeasure?: (position: [number, number]) => void;
-  onSelectMeasure?: (id: string | null) => void;
+  onSelectMeasure?: (id: string) => void;
   onHoverMeasure?: (id: string | null) => void;
   onMoveMeasure?: (id: string, position: [number, number]) => void;
   onResizeZone?: (id: string, radiusM: number) => void;
@@ -157,11 +408,11 @@ export default function CrisisMap({
   selectedId,
   onSelect,
   theme,
-  focus,
+  focus = null,
   measures = [],
-  armedTool,
-  selectedMeasureId,
-  hoveredMeasureId,
+  armedTool = null,
+  selectedMeasureId = null,
+  hoveredMeasureId = null,
   onPlaceMeasure,
   onSelectMeasure,
   onHoverMeasure,
@@ -169,6 +420,14 @@ export default function CrisisMap({
   onResizeZone,
 }: CrisisMapProps) {
   const selected = reports.find((r) => r.id === selectedId) ?? null;
+  const selectedMeasure =
+    measures.find((m) => m.id === selectedMeasureId) ?? null;
+
+  // No-op fallbacks keep the legacy read-only usage untouched.
+  const selectMeasure = onSelectMeasure ?? ((): void => {});
+  const hoverMeasure = onHoverMeasure ?? ((): void => {});
+  const moveMeasure = onMoveMeasure ?? ((): void => {});
+  const resizeZone = onResizeZone ?? ((): void => {});
 
   // Ten icons (5 confidence bands x selected/unselected), built once. Pin
   // colour now tracks confidence instead of a single status colour.
@@ -181,7 +440,13 @@ export default function CrisisMap({
     return map;
   }, []);
 
+  const lockIcons = useMemo(
+    () => ({ idle: lockIcon(false), selected: lockIcon(true) }),
+    [],
+  );
+
   return (
+    <div className={`h-full w-full ${armedTool ? "cl-armed" : ""}`}>
     <MapContainer
       center={BW_CENTER}
       zoom={BW_ZOOM}
@@ -195,7 +460,45 @@ export default function CrisisMap({
         url={TILE_URLS[theme]}
       />
 
-      <MapController selected={selected} focus={focus} />
+      <MapController
+        selected={selected}
+        focus={focus}
+        panTarget={
+          selectedMeasure
+            ? { id: selectedMeasure.id, position: selectedMeasure.position }
+            : null
+        }
+      />
+
+      {onPlaceMeasure && (
+        <PlacementCatcher armed={Boolean(armedTool)} onPlace={onPlaceMeasure} />
+      )}
+
+      {/* Tactical measures layer — sits on top of the incident pins. */}
+      {measures.map((measure) =>
+        measure.kind === "zone" ? (
+          <ZoneMeasure
+            key={measure.id}
+            measure={measure}
+            selected={measure.id === selectedMeasureId}
+            hovered={measure.id === hoveredMeasureId}
+            onSelect={selectMeasure}
+            onHover={hoverMeasure}
+            onMove={moveMeasure}
+            onResize={resizeZone}
+          />
+        ) : (
+          <MeasureMarker
+            key={measure.id}
+            measure={measure}
+            selected={measure.id === selectedMeasureId}
+            hovered={measure.id === hoveredMeasureId}
+            onSelect={selectMeasure}
+            onHover={hoverMeasure}
+            onMove={moveMeasure}
+          />
+        ),
+      )}
 
       {reports.map((report) => {
         const isSelected = report.id === selectedId;
@@ -205,11 +508,15 @@ export default function CrisisMap({
           <Marker
             key={`${report.id}-${isSelected}`}
             position={report.coordinates}
-            icon={icons.get(
-              `${confidenceBand(report.confidence)}-${isSelected}`,
-            )}
+            icon={
+              report.classified
+                ? lockIcons[isSelected ? "selected" : "idle"]
+                : icons.get(
+                    `${confidenceBand(report.confidence)}-${isSelected}`,
+                  )
+            }
             opacity={confidenceOpacity(report.confidence)}
-            zIndexOffset={isSelected ? 1000 : 0}
+            zIndexOffset={isSelected ? 1000 : report.classified ? 500 : 0}
             eventHandlers={{ click: () => onSelect(report.id) }}
           >
             <Tooltip
@@ -231,68 +538,18 @@ export default function CrisisMap({
                     {report.confidence}%
                   </span>
                 </p>
+                {report.classified && (
+                  <p className="flex items-center gap-1.5 pt-0.5 font-semibold text-violet-600 dark:text-violet-400">
+                    <Lock className="h-3 w-3 shrink-0" aria-hidden />
+                    RESTRICTED · Police Command
+                  </p>
+                )}
               </div>
             </Tooltip>
           </Marker>
         );
       })}
-
-      {/* Map click listener when tool is armed */}
-      <MapEventsHandler armedTool={armedTool} onPlaceMeasure={onPlaceMeasure} />
-
-      {/* Render placed measures */}
-      {measures.map((measure) => {
-        const isSelected = measure.id === selectedMeasureId;
-        const isHovered = measure.id === hoveredMeasureId;
-        const meta = MEASURE_KINDS[measure.kind];
-        if (!meta) return null;
-
-        return (
-          <div key={measure.id}>
-            {measure.kind === "zone" && measure.radiusM && (
-              <Circle
-                center={measure.position}
-                radius={measure.radiusM}
-                pathOptions={{
-                  color: meta.color,
-                  weight: isSelected ? 2.5 : isHovered ? 2 : 1.5,
-                  opacity: 0.8,
-                  fillColor: meta.color,
-                  fillOpacity: isSelected ? 0.16 : isHovered ? 0.12 : 0.08,
-                }}
-              />
-            )}
-            <Marker
-              position={measure.position}
-              icon={measureIcon(meta.color, isSelected || isHovered)}
-              zIndexOffset={isSelected ? 1100 : isHovered ? 1050 : 500}
-              eventHandlers={{
-                click: () => onSelectMeasure && onSelectMeasure(measure.id),
-                mouseover: () => onHoverMeasure && onHoverMeasure(measure.id),
-                mouseout: () => onHoverMeasure && onHoverMeasure(null),
-              }}
-            >
-              <Tooltip
-                direction="top"
-                offset={[0, -6]}
-                className="cl-tooltip"
-              >
-                <div className="min-w-[120px] space-y-1 text-xs">
-                  <p className="font-semibold text-foreground">
-                    {measure.label}
-                  </p>
-                  <p className="text-muted-foreground">{meta.labelEn}</p>
-                  {measure.note && (
-                    <p className="mt-1 border-t border-border/50 pt-1 text-[10px] italic text-muted-foreground">
-                      {measure.note}
-                    </p>
-                  )}
-                </div>
-              </Tooltip>
-            </Marker>
-          </div>
-        );
-      })}
     </MapContainer>
+    </div>
   );
 }

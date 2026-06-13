@@ -4,8 +4,8 @@
  * Timestamps are rebased to module-load time so the demo always looks live.
  */
 
+import type { SOPTask } from "@/lib/types";
 import { getWorkingUrl } from "./urls";
-
 
 export type ReportStatus = "relevant" | "review" | "ignored";
 export type RiskLevel = "High" | "Moderate" | "Low";
@@ -64,6 +64,16 @@ export interface CrisisReport {
   mediaConsistency?: string | null;
   /** Live mode: link to the original post/release. */
   externalUrl?: string | null;
+  /** Recommended responder action (narrative hint, own dossier block). */
+  actionHint?: string | null;
+  /** Itemized SOP checklist — presence marks the report as dispatchable. */
+  sopTasks?: SOPTask[];
+  /** True once the incident was handed to the Leitstelle (manual or auto). */
+  dispatched?: boolean;
+  /** ISO timestamp of the Leitstelle handoff. */
+  dispatchedAt?: string | null;
+  /** Information discipline: raw intel (media, sources, snippets) is masked. */
+  classified?: boolean;
 }
 
 export const STATUS_META: Record<
@@ -158,6 +168,14 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSnippet:
       "Rauchsäule über dem Bahnhofsviertel sichtbar, Löschzug im Anmarsch …",
     signalSource: "@bodensee_spotter · Social Media",
+    actionHint:
+      "Confirm fire-brigade dispatch, establish a 300 m cordon and reroute pedestrian traffic.",
+    sopTasks: [
+      { task: "Confirm fire-brigade dispatch", agency: "Feuerwehr", completed: false },
+      { task: "Establish 300 m cordon", agency: "Polizei", completed: false },
+      { task: "Reroute pedestrian/car traffic", agency: "Polizei", completed: false },
+    ],
+    dispatched: false,
   },
   {
     id: "S-0287",

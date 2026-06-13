@@ -12,7 +12,12 @@ from statistics import fmean
 
 from geopy.distance import geodesic
 
-from logic.guidance import action_hint, severity_for
+from logic.guidance import (
+    action_hint,
+    is_security_sensitive,
+    severity_for,
+    sop_tasks_for,
+)
 from schemas import RawReport, SourceReport, VerifiedIncident
 
 RADIUS_KM: float = 1.0
@@ -94,6 +99,8 @@ def cluster_reports(
                 summary=_summarise(cluster),
                 severity=severity_for(event_type),
                 action_hint=action_hint(event_type, count, confidence),
+                classified=is_security_sensitive(event_type),
+                sop_tasks=sop_tasks_for(event_type, count, confidence),
                 sources=[
                     SourceReport(
                         id=r.id,
