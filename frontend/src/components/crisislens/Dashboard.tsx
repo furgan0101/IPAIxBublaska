@@ -303,6 +303,46 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     [allReports, region, activeTag, minConfidence],
   );
 
+  const popularSummary = useMemo(() => {
+    if (feed.length === 0) return null;
+
+    // Sort to find the highest-risk and highest-confidence report
+    const sortedBySeverity = [...feed].sort((a, b) => {
+      const aRiskVal = a.riskLevel === "High" ? 3 : a.riskLevel === "Moderate" ? 2 : 1;
+      const bRiskVal = b.riskLevel === "High" ? 3 : b.riskLevel === "Moderate" ? 2 : 1;
+      if (bRiskVal !== aRiskVal) return bRiskVal - aRiskVal;
+      return b.confidence - a.confidence;
+    });
+
+    const topReport = sortedBySeverity[0];
+    const highRiskCount = feed.filter((r) => r.riskLevel === "High").length;
+    const escalatedCount = feed.filter((r) => r.status === "relevant").length;
+
+    let text = "";
+    if (region) {
+      text = `Tracking ${feed.length} signals in the ${region.name} sector. `;
+      if (escalatedCount > 0) {
+        text += `${escalatedCount} alert${escalatedCount > 1 ? "s are" : " is"} escalated. `;
+      }
+      if (topReport) {
+        text += `The most critical is the ${topReport.crisisType} crisis, reported with a plausibility of ${topReport.confidence}%.`;
+      }
+    } else {
+      text = `Tracking ${feed.length} active signals across the Baden-Württemberg sector. `;
+      if (escalatedCount > 0) {
+        text += `${escalatedCount} alert${escalatedCount > 1 ? "s are" : " is"} escalated. `;
+      }
+      if (topReport) {
+        text += `The most critical is the ${topReport.crisisType} crisis in ${topReport.city} with a plausibility of ${topReport.confidence}%.`;
+      }
+    }
+
+    return {
+      text,
+      topReport,
+    };
+  }, [feed, region]);
+
   return (
     <div className="cl-fade-in flex h-screen flex-col overflow-hidden bg-background">
       {/* Flag rule across the top edge. */}
@@ -403,6 +443,48 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
 
           <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            {popularSummary && (
+              <div className="mb-3 rounded-lg border border-border bg-card p-3 shadow-sm relative overflow-hidden">
+                {/* Subtle top indicator bar */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-destructive" />
+                
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive"></span>
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
+                      Top Region Alert
+                    </span>
+                  </div>
+                  {popularSummary.topReport.riskLevel === "High" && (
+                    <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-destructive">
+                      High Risk
+                    </span>
+                  )}
+                </div>
+
+                <h3 className="text-xs font-bold text-foreground line-clamp-1">
+                  {popularSummary.topReport.title}
+                </h3>
+                
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  {popularSummary.text}
+                </p>
+
+                <div className="mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => selectIncident(popularSummary.topReport.id)}
+                    className="w-full rounded border border-border/80 bg-muted/40 hover:bg-muted py-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors cursor-pointer"
+                  >
+                    Investigate Alert
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
               <ReportTimeline reports={feed} />
             </div>

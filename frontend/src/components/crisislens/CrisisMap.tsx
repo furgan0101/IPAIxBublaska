@@ -154,6 +154,9 @@ function MapEventsHandler({
 
 function ZoomTracker({ onZoomChange }: { onZoomChange: (zoom: number) => void }) {
   const map = useMapEvents({
+    zoom() {
+      onZoomChange(map.getZoom());
+    },
     zoomend() {
       onZoomChange(map.getZoom());
     },
@@ -220,12 +223,13 @@ export default function CrisisMap({
 
   const focusLat = focus?.center?.[0];
   const focusLng = focus?.center?.[1];
+  const isZoomedIn = currentZoom >= 12;
 
   useEffect(() => {
-    // Instantly clear/flush old roadworks overlays on query or search update
+    // Instantly clear/flush old roadworks overlays
     setRoadworks(null);
 
-    if (!hasSearched || !focusLat || !focusLng) {
+    if (!isZoomedIn || !focusLat || !focusLng) {
       return;
     }
 
@@ -237,7 +241,7 @@ export default function CrisisMap({
         }
       })
       .catch((err) => console.error("Failed to fetch roadworks:", err));
-  }, [hasSearched, focusLat, focusLng]);
+  }, [isZoomedIn, focusLat, focusLng]);
 
   const isBlockedStreet = (feature: any) => {
     if (!feature || !feature.properties) return false;
@@ -469,7 +473,7 @@ export default function CrisisMap({
     }).filter((p): p is NonNullable<typeof p> => p !== null);
   }, [reports, selectedId]);
 
-  const showRoadworks = roadworks && hasSearched && currentZoom >= 12;
+  const showRoadworks = roadworks && isZoomedIn;
 
   return (
     <MapContainer
