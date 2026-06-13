@@ -222,8 +222,10 @@ export default function CrisisMap({
   const focusLng = focus?.center?.[1];
 
   useEffect(() => {
+    // Instantly clear/flush old roadworks overlays on query or search update
+    setRoadworks(null);
+
     if (!hasSearched || !focusLat || !focusLng) {
-      setRoadworks(null);
       return;
     }
 
