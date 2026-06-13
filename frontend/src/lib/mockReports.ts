@@ -35,6 +35,12 @@ export interface ConfidenceBreakdown {
   crossSourceConfirmation: number;
 }
 
+export interface RelatedIncident {
+  incident_id: string;
+  relation_type: "causal" | "spatial" | "sequel";
+  rationale: string;
+}
+
 export interface CrisisReport {
   id: string;
   title: string;
@@ -66,6 +72,8 @@ export interface CrisisReport {
   externalUrl?: string | null;
   /** Raw event-type key (e.g. "fire", "flood") — used for map icons. */
   eventType?: string;
+  /** Causal or semantic links to other reports. */
+  related_incidents?: RelatedIncident[];
 }
 
 export const STATUS_META: Record<
@@ -161,9 +169,41 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSnippet:
       "Rauchsäule über dem Bahnhofsviertel sichtbar, Löschzug im Anmarsch …",
     signalSource: "@bodensee_spotter · Social Media",
-  },
-  {
-    id: "S-0287",
+    },
+    {
+    id: "KN-0143",
+    title: "Traffic congestion at Station Square",
+    crisisType: "Traffic",
+    eventType: "traffic",
+    city: "Konstanz",
+    coordinates: [47.6599, 9.176],
+    status: "review",
+    confidence: 65,
+    riskLevel: "Low",
+    timestamp: minutesAgo(5),
+    aiSummary: "Multiple reports of heavy traffic and road blocks around the station area.",
+    locationConfidence: 95,
+    reasonForDecision: "Corroborated traffic disruption reports.",
+    breakdown: {
+      sourceReliability: 60,
+      locationMatch: 95,
+      mediaSupport: 30,
+      crossSourceConfirmation: 70,
+    },
+    evidenceLinks: [],
+    signalSnippet: "Stau am Bahnhofplatz, Polizei regelt den Verkehr.",
+    signalSource: "@kn_traffic · Social Media",
+    related_incidents: [
+      {
+        incident_id: "KN-0142",
+        relation_type: "causal",
+        rationale: "Traffic congestion is a direct consequence of the nearby structure fire and emergency vehicle access."
+      }
+    ]
+    },
+    {
+    id: "UL-0288",
+
     title: "Multi-vehicle accident on B14 arterial road",
     crisisType: "Traffic Accident",
     eventType: "accident",

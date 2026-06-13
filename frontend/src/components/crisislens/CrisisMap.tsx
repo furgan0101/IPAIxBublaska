@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, Circle, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, Circle, useMapEvents, Polyline, Polygon } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -12,7 +12,7 @@ import { MEASURE_KINDS, type PlacedMeasure, type MeasureKind } from "@/lib/measu
 /** Overview framing for the Baden-Württemberg sector. */
 const BW_CENTER: [number, number] = [48.62, 9.05];
 const BW_ZOOM = 8;
-const FOCUS_ZOOM = 9;
+const FOCUS_ZOOM = 15;
 
 /** Wait for the detail-panel width transition (500 ms) before flying. */
 const FLY_DELAY_MS = 560;
@@ -217,6 +217,78 @@ export default function CrisisMap({
     return map;
   }, []);
 
+  // Compute polygons for cycles of incidents (size >= 3)
+  const polygons = useMemo(() => {
+    const adj = new Map<string, Set<string>>();
+    const reportMap = new Map<string, CrisisReport>();
+    
+    for (const r of reports) {
+      reportMap.set(r.id, r);
+      if (!adj.has(r.id)) adj.set(r.id, new Set());
+    }
+    
+    for (const r of reports) {
+      if (r.related_incidents) {
+        for (const rel of r.related_incidents) {
+          if (reportMap.has(rel.incident_id)) {
+            adj.get(r.id)!.add(rel.incident_id);
+            adj.get(rel.incident_id)!.add(r.id);
+          }
+        }
+      }
+    }
+
+    const visited = new Set<string>();
+    const components: string[][] = [];
+    
+    for (const nodeId of adj.keys()) {
+      if (!visited.has(nodeId)) {
+        const comp: string[] = [];
+        const queue = [nodeId];
+        visited.add(nodeId);
+        while (queue.length > 0) {
+          const curr = queue.shift()!;
+          comp.push(curr);
+          for (const neighbor of adj.get(curr) || []) {
+            if (!visited.has(neighbor)) {
+              visited.add(neighbor);
+              queue.push(neighbor);
+            }
+          }
+        }
+        if (comp.length >= 3) {
+          components.push(comp);
+        }
+      }
+    }
+
+    return components.map((comp) => {
+      const pts = comp.map((id) => reportMap.get(id)!).filter(Boolean);
+      if (pts.length < 3) return null;
+      
+      // Compute centroid
+      const lats = pts.map((p) => p.coordinates[0]);
+      const lons = pts.map((p) => p.coordinates[1]);
+      const cy = lats.reduce((a, b) => a + b, 0) / lats.length;
+      const cx = lons.reduce((a, b) => a + b, 0) / lons.length;
+      
+      // Sort angularly to make a clean polygon boundary
+      const sortedPts = [...pts].sort((a, b) => {
+        const angleA = Math.atan2(a.coordinates[0] - cy, a.coordinates[1] - cx);
+        const angleB = Math.atan2(b.coordinates[0] - cy, b.coordinates[1] - cx);
+        return angleA - angleB;
+      });
+
+      const isSelectedInvolved = sortedPts.some((p) => p.id === selectedId);
+      
+      return {
+        id: sortedPts.map(p => p.id).join("-"),
+        coordinates: sortedPts.map(p => p.coordinates),
+        isSelectedInvolved,
+      };
+    }).filter((p): p is NonNullable<typeof p> => p !== null);
+  }, [reports, selectedId]);
+
   return (
     <MapContainer
       center={BW_CENTER}
@@ -232,6 +304,43 @@ export default function CrisisMap({
       />
 
       <MapController selected={selected} focus={focus} />
+
+      {/* Enclosed Cycle Fills */}
+      {polygons.map((poly) => (
+        <Polygon
+          key={poly.id}
+          positions={poly.coordinates}
+          pathOptions={{
+            stroke: false,
+            fillColor: "#ef4444",
+            fillOpacity: poly.isSelectedInvolved ? 0.15 : 0.08,
+          }}
+        />
+      ))}
+
+      {/* Connection Edges */}
+      {reports.map((report) => {
+        if (!report.related_incidents) return null;
+        return report.related_incidents.map((rel) => {
+          const target = reports.find((r) => r.id === rel.incident_id);
+          if (!target) return null;
+          
+          const isInvolved = report.id === selectedId || target.id === selectedId;
+
+          return (
+            <Polyline
+              key={`${report.id}-${target.id}`}
+              positions={[report.coordinates, target.coordinates]}
+              pathOptions={{
+                color: isInvolved ? "#ef4444" : "#f87171",
+                weight: isInvolved ? 3 : 1.5,
+                dashArray: "8, 8",
+                opacity: isInvolved ? 0.8 : 0.4,
+              }}
+            />
+          );
+        });
+      })}
 
       {reports.map((report) => {
         const isSelected = report.id === selectedId;

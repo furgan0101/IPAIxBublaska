@@ -24,14 +24,14 @@ from statistics import fmean
 from typing import Any
 
 from logic.guidance import action_hint, severity_for
-from schemas import SourceReport, VerifiedIncident
+from schemas import RelatedIncident, SourceReport, VerifiedIncident
 
 LIVE_FILE: Path = Path(__file__).parent / "data" / "live.json"
 
 # How many posts to surface in each incident's source timeline (highest
 # reliability first, then shown chronologically). The full corroboration count
 # is preserved in `report_count`.
-_MAX_SOURCES: int = 8
+_MAX_SOURCES: int = 50
 
 
 class _Group:
@@ -63,10 +63,10 @@ _GROUPS: tuple[_Group, ...] = (
         "INC-MH-FIRE",
         "fire",
         {"fire"},
-        (49.452, 8.518),
-        "Major industrial fire in Mannheim-Rheinau with a large-scale "
-        "fire-service response. Cascading effects across the city: A6 "
-        "motorway closure, school and Kita closures, elevated hospital "
+        (49.534767, 8.461813),
+        "Major industrial fire in Mannheim-Waldhof (Sandhofer Str. 174) with a "
+        "large-scale fire-service response. Cascading effects across the city: "
+        "A6 motorway closure, school and Kita closures, elevated hospital "
         "admissions for respiratory complaints, an air-quality alert, an "
         "evacuation zone, and possible Rhine contamination from firefighting "
         "runoff.",
@@ -75,33 +75,33 @@ _GROUPS: tuple[_Group, ...] = (
         "INC-MH-AIR",
         "hazmat",
         {"air_quality"},
-        (49.458, 8.512),
-        "Air-quality alert downwind of the Mannheim-Rheinau fire — residents "
+        (49.5407, 8.4558),
+        "Air-quality alert downwind of the Mannheim-Waldhof fire — residents "
         "report heavy smoke and odour; the city advises keeping windows shut.",
     ),
     _Group(
         "INC-MH-EVAC",
         "evacuation",
         {"evacuation"},
-        (49.446, 8.526),
+        (49.5287, 8.4698),
         "Precautionary evacuations plus school and Kita closures around the "
-        "Mannheim-Rheinau fire.",
+        "Mannheim-Waldhof fire.",
     ),
     _Group(
         "INC-MH-A6",
         "accident",
         {"traffic"},
-        (49.478, 8.555),
-        "A6 motorway closed between Mannheim and Viernheim due to smoke drift; "
+        (49.5607, 8.4988),
+        "A6 motorway closed near Mannheim-Sandhofen due to smoke drift; "
         "kilometre-long tailbacks.",
     ),
     _Group(
         "INC-MH-WATER",
         "water_supply",
         {"water_contamination"},
-        (49.441, 8.500),
+        (49.534303, 8.454597),
         "Environmental agency warns firefighting runoff could contaminate the "
-        "Rhine near Mannheim.",
+        "Rhine near Mannheim-Waldhof.",
     ),
 )
 
@@ -133,7 +133,9 @@ def _source_report(post: dict[str, Any]) -> SourceReport:
     )
 
 
-def _build_incident(group: _Group, posts: list[dict[str, Any]]) -> VerifiedIncident:
+def _build_incident(
+    group: _Group, posts: list[dict[str, Any]], related: list[RelatedIncident] | None = None
+) -> VerifiedIncident:
     ordered = sorted(posts, key=lambda p: p["_ts"])
     # Most reliable posts make the timeline; shown chronologically.
     top = sorted(posts, key=lambda p: p["reliability_score"], reverse=True)[:_MAX_SOURCES]
@@ -154,6 +156,7 @@ def _build_incident(group: _Group, posts: list[dict[str, Any]]) -> VerifiedIncid
         severity=severity_for(group.event_type),
         action_hint=action_hint(group.event_type, len(posts), confidence),
         sources=[_source_report(p) for p in top_chrono],
+        related_incidents=related or [],
     )
 
 
@@ -190,6 +193,34 @@ def build_live_incidents(now: datetime | None = None) -> list[VerifiedIncident]:
     incidents: list[VerifiedIncident] = []
     for group in _GROUPS:
         members = [p for p in parsed if p.get("incident_type") in group.raw_types]
-        if members:
-            incidents.append(_build_incident(group, members))
+        if not members:
+            continue
+            
+        related: list[RelatedIncident] = []
+        if group.incident_id == "INC-MH-FIRE":
+            related.append(RelatedIncident(
+                incident_id="INC-MH-EVAC",
+                relation_type="causal",
+                rationale="The escalating industrial fire prompts immediate evacuations in nearby zones."
+            ))
+        elif group.incident_id == "INC-MH-AIR":
+            related.append(RelatedIncident(
+                incident_id="INC-MH-FIRE",
+                relation_type="causal",
+                rationale="Toxic air quality warnings are driven directly by the major fire emissions."
+            ))
+        elif group.incident_id == "INC-MH-EVAC":
+            related.append(RelatedIncident(
+                incident_id="INC-MH-WATER",
+                relation_type="causal",
+                rationale="Evacuation zones are adjacent to water containment basins."
+            ))
+        elif group.incident_id == "INC-MH-WATER":
+            related.append(RelatedIncident(
+                incident_id="INC-MH-AIR",
+                relation_type="causal",
+                rationale="Chemical runoff in the water basins volatilizes, exacerbating local air contamination."
+            ))
+            
+        incidents.append(_build_incident(group, members, related))
     return incidents

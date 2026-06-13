@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   UserRound,
   X,
+  Share2,
 } from "lucide-react";
 
 import {
@@ -220,6 +221,27 @@ function PanelContent({
             {report.reasonForDecision}
           </p>
         </section>
+
+        {report.related_incidents && report.related_incidents.length > 0 && (
+          <section className="rounded-lg border border-gold/30 bg-gold/5 p-4">
+            <div className="flex items-center gap-2">
+              <Share2 className="h-3.5 w-3.5 text-gold" />
+              <SectionLabel>Connected incidents</SectionLabel>
+            </div>
+            <div className="mt-3 space-y-3">
+              {report.related_incidents.map((rel) => (
+                <div key={rel.incident_id} className="text-[13px] leading-relaxed">
+                  <span className="font-bold text-gold uppercase text-[10px] block mb-1">
+                    {rel.relation_type} relationship
+                  </span>
+                  <p className="text-foreground/90 italic">
+                    “{rel.rationale}”
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {((report.mediaPreviews?.length ?? 0) > 0 || report.mediaConsistency) && (
           <section>

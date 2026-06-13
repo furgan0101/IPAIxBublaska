@@ -96,6 +96,14 @@ class SourceReport(BaseModel):
     ai_credibility: float | None = None
 
 
+class RelatedIncident(BaseModel):
+    """A causal or semantic link between two incidents."""
+
+    incident_id: str
+    relation_type: Literal["causal", "spatial", "sequel"]
+    rationale: str
+
+
 class VerifiedIncident(BaseModel):
     """A cluster of mutually corroborating reports promoted to a live incident."""
 
@@ -120,6 +128,9 @@ class VerifiedIncident(BaseModel):
     action_hint: str = Field(description="Concise recommended responder action")
     sources: list[SourceReport] = Field(
         default_factory=list, description="Corroborating reports, chronological"
+    )
+    related_incidents: list[RelatedIncident] = Field(
+        default_factory=list, description="Causal or semantic links to other incidents"
     )
 
 
@@ -189,3 +200,18 @@ class DwdStatus(BaseModel):
     description: str | None = None
     timestamp: datetime | None = None
     url: str = "https://www.dwd.de"
+    temperature: float | None = None
+
+
+class PegelStatus(BaseModel):
+    """Current water level (pegel) and warning summary."""
+
+    active: bool
+    station: str | None = None
+    water: str | None = None
+    value: float | None = None
+    unit: str | None = "cm"
+    timestamp: datetime | None = None
+    state: str | None = None
+    url: str = "https://www.hvz.baden-wuerttemberg.de"
+

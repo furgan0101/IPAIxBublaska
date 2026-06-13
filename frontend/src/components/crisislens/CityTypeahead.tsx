@@ -3,7 +3,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { MapPin, Search, X } from "lucide-react";
 
-import { suggestCities, type CityHit } from "@/lib/cityGazetteer";
+import { suggestCities, type CityHit, nearestCity } from "@/lib/cityGazetteer";
+import { API_BASE } from "@/lib/types";
 
 interface CityTypeaheadProps {
   /** Currently selected region label (shown when the input is blurred/empty). */
@@ -54,17 +55,42 @@ export default function CityTypeahead({
     setOpen(false);
   };
 
+  const fetchGeocode = async (q: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/geocode?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.lat !== undefined && data.lon !== undefined) {
+          const lat = parseFloat(data.lat);
+          const lon = parseFloat(data.lon);
+          const canonicalName = nearestCity(lat, lon);
+          choose({
+            name: canonicalName,
+            center: [lat, lon],
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Geocoding failed:", err);
+    }
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
-    if (!suggestions.length) return;
     if (e.key === "ArrowDown") {
+      if (!suggestions.length) return;
       e.preventDefault();
       setActive((i) => (i + 1) % suggestions.length);
     } else if (e.key === "ArrowUp") {
+      if (!suggestions.length) return;
       e.preventDefault();
       setActive((i) => (i - 1 + suggestions.length) % suggestions.length);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      choose(suggestions[active] ?? suggestions[0]);
+      if (suggestions.length > 0) {
+        choose(suggestions[active] ?? suggestions[0]);
+      } else if (query.trim()) {
+        fetchGeocode(query.trim());
+      }
     } else if (e.key === "Escape") {
       setOpen(false);
     }
@@ -73,7 +99,19 @@ export default function CityTypeahead({
   return (
     <div ref={rootRef} className="relative">
       <div className="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-1.5">
-        <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <button
+          type="button"
+          onClick={() => {
+            if (suggestions.length > 0) {
+              choose(suggestions[active] ?? suggestions[0]);
+            } else if (query.trim()) {
+              fetchGeocode(query.trim());
+            }
+          }}
+          className="text-muted-foreground hover:text-foreground focus:outline-none flex items-center"
+        >
+          <Search className="h-3.5 w-3.5 shrink-0" />
+        </button>
         <input
           type="text"
           value={query}

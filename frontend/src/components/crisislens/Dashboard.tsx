@@ -25,6 +25,7 @@ import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DwdStatusTile from "./DwdStatusTile";
+import PegelStatusTile from "./PegelStatusTile";
 import DetailPanel from "./DetailPanel";
 import TagFilter from "./TagFilter";
 import FilterToolbar from "./FilterToolbar";
@@ -60,7 +61,7 @@ interface RegionFocus {
 // no modal. The wider Baden-Württemberg map stays fully populated underneath.
 const DEFAULT_REGION: RegionFocus = {
   name: "Mannheim",
-  center: [49.452, 8.518],
+  center: [49.4875, 8.466],
 };
 
 /** Main command-center view: map, stats, signal feed and report dossier. */
@@ -90,9 +91,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   // Map markers honour the header filters (event type + confidence) but NOT
   // the selected region — the whole Baden-Württemberg picture stays visible.
+  // We filter to ONLY show incident clusters (not individual signals) on the map.
   const reports = useMemo(
     () => {
-      let filtered = allReports;
+      let filtered = allReports.filter(r => 
+        r.id.startsWith("INC-") || // live incidents
+        r.id.startsWith("RPT-") || // mock reports or direct injections
+        r.status === "ignored"     // debunked reports
+      );
       if (activeTag) {
         filtered = filtered.filter((r) => r.crisisType === activeTag);
       }
@@ -149,7 +155,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   // Centre the map on the selected region; a selected incident overrides this
   // inside MapController.
   const cityFocus = useMemo<MapFocus | null>(
-    () => (region ? { center: region.center, zoom: 11 } : null),
+    () => (region ? { center: region.center, zoom: 14 } : null),
     [region],
   );
 
@@ -267,14 +273,27 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
 
   const feed = useMemo(
-    () =>
-      [...regionReports]
+    () => {
+      let base = region 
+        ? allReports.filter((r) => r.city === region.name)
+        : allReports;
+        
+      if (activeTag) {
+        base = base.filter((r) => r.crisisType === activeTag);
+      }
+      if (minConfidence > 1) {
+        const threshold = (minConfidence - 1) * 25;
+        base = base.filter((r) => r.confidence >= threshold);
+      }
+        
+      return [...base]
         .sort(
           (a, b) =>
             safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
         )
-        .slice(0, 100),
-    [regionReports],
+        .slice(0, 100);
+    },
+    [allReports, region, activeTag, minConfidence],
   );
 
   return (
@@ -295,7 +314,16 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          <DwdStatusTile />
+          <DwdStatusTile
+            locationName={region?.name ?? null}
+            lat={region?.center?.[0] ?? null}
+            lon={region?.center?.[1] ?? null}
+          />
+          <PegelStatusTile
+            locationName={region?.name ?? null}
+            lat={region?.center?.[0] ?? null}
+            lon={region?.center?.[1] ?? null}
+          />
           
           {selected && (
             <button
@@ -307,14 +335,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
               Reset View
             </button>
           )}
-
-          <a
-            href="/analytics"
-            className="hidden items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex"
-            title="Signal analytics"
-          >
-            <BarChart3 className="h-3.5 w-3.5" />
-          </a>
 
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>

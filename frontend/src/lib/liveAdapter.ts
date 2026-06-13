@@ -129,6 +129,7 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     externalUrl: newest
       ? getWorkingUrl(newest.url, newest.text, newest.source, newest.author)
       : null,
+    related_incidents: incident.related_incidents,
   };
 }
 
@@ -172,11 +173,58 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
   };
 }
 
+export function adaptSource(
+  source: SourceReport,
+  parent: VerifiedIncident,
+): CrisisReport {
+  const label = eventMeta(parent.event_type).label;
+  return {
+    id: source.id,
+    title: `${label} — corroborating signal`,
+    crisisType: label,
+    eventType: parent.event_type,
+    city: nearestCity(parent.lat, parent.lon),
+    coordinates: [parent.lat, parent.lon],
+    status: parent.confidence_score >= 0.7 ? "relevant" : "review",
+    confidence: Math.round((source.ai_credibility ?? 0.5) * 100),
+    riskLevel: RISK_BY_SEVERITY[parent.severity] ?? "Low",
+    timestamp: source.timestamp,
+    aiSummary: source.ai_rationale ?? parent.summary,
+    locationConfidence: 50,
+    reasonForDecision: `Corroborating source for incident ${parent.id}. Reliability: ${Math.round(
+      (source.ai_credibility ?? 0.5) * 100,
+    )}%`,
+    breakdown: {
+      sourceReliability: Math.round((source.ai_credibility ?? 0.5) * 100),
+      locationMatch: 50,
+      mediaSupport: source.media_preview ? 70 : 30,
+      crossSourceConfirmation: Math.round(parent.confidence_score * 100),
+    },
+    evidenceLinks: [evidenceFrom(source)],
+    signalSnippet: truncate(source.text, 140),
+    signalSource: `${source.author} · ${sourceTypeFor(source.source)}`,
+    mediaPreviews: source.media_preview ? [source.media_preview] : [],
+    mediaConsistency: source.ai_media_note ?? null,
+    externalUrl: getWorkingUrl(
+      source.url,
+      source.text,
+      source.source,
+      source.author,
+    ),
+  };
+}
+
 export function adaptAll(
   incidents: VerifiedIncident[],
   debunked: DebunkedReport[],
 ): CrisisReport[] {
-  return [...incidents.map(adaptIncident), ...debunked.map(adaptDebunked)];
+  const incidentReports = incidents.map(adaptIncident);
+  const sourceReports = incidents.flatMap((inc) =>
+    inc.sources.map((src) => adaptSource(src, inc)),
+  );
+  const debunkedReports = debunked.map(adaptDebunked);
+
+  return [...incidentReports, ...sourceReports, ...debunkedReports];
 }
 
 export const toReports = adaptAll;

@@ -67,6 +67,7 @@ from logic.verification import (
 from schemas import (
     DebunkedReport,
     DwdStatus,
+    PegelStatus,
     RawReport,
     ReportSubmission,
     SubmissionResult,
@@ -297,23 +298,112 @@ def get_incidents() -> list[VerifiedIncident]:
 
 
 @app.get("/api/dwd/status", response_model=DwdStatus)
-def get_dwd_status() -> DwdStatus:
-    """Scan active reports for the most severe DWD warning."""
+async def get_dwd_status(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> DwdStatus:
+    """Scan active reports for the most severe DWD warning, optionally filtered by location."""
+    # Fetch current temperature from Bright Sky
+    temperature: float | None = None
+    temp_lat = lat if lat is not None else 49.534767
+    temp_lon = lon if lon is not None else 8.461813
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(f"https://api.brightsky.dev/current_weather?lat={temp_lat}&lon={temp_lon}")
+            if res.status_code == 200:
+                temp_data = res.json()
+                temperature = temp_data.get("weather", {}).get("temperature")
+    except Exception:
+        pass
+
+    # Fetch live alerts from Bright Sky alerts API directly
+    live_alerts = []
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(f"https://api.brightsky.dev/alerts?lat={temp_lat}&lon={temp_lon}")
+            if res.status_code == 200:
+                alerts_data = res.json()
+                live_alerts = alerts_data.get("alerts") or []
+    except Exception:
+        pass
+
+    if live_alerts:
+        severity_map = {"minor": 1, "moderate": 2, "severe": 3, "extreme": 4}
+        
+        def alert_key(alert):
+            sev = severity_map.get(alert.get("severity", "").lower(), 0)
+            onset = alert.get("onset", "")
+            return (sev, onset)
+            
+        best_alert = sorted(live_alerts, key=alert_key, reverse=True)[0]
+        headline = best_alert.get("headline_de") or best_alert.get("headline_en") or "Amtliche Warnung"
+        description = best_alert.get("description_de") or best_alert.get("description_en") or ""
+        timestamp_str = best_alert.get("onset") or best_alert.get("effective")
+        timestamp = None
+        if timestamp_str:
+            try:
+                from datetime import datetime
+                if timestamp_str.endswith("Z"):
+                    timestamp_str = timestamp_str[:-1] + "+00:00"
+                timestamp = datetime.fromisoformat(timestamp_str)
+            except Exception:
+                pass
+                
+        return DwdStatus(
+            active=True,
+            level=severity_map.get(best_alert.get("severity", "").lower(), 0),
+            headline=headline[:100],
+            description=description,
+            timestamp=timestamp,
+            url=f"https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html?ort={q or 'Mannheim'}",
+            temperature=temperature
+        )
+
+    # Fallback to local active reports scanning
     # Look in credible reports and live incidents
-    all_reports = state["credible"][:]
+    all_reports: list[tuple[Any, float, float]] = []
+    for r in state["credible"]:
+        all_reports.append((r, r.lat, r.lon))
     for inc in live_incidents:
         for src in inc.sources:
-            # Reconstruct RawReport-like object for the logic below
-            all_reports.append(src)
+            all_reports.append((src, inc.lat, inc.lon))
 
-    dwd_reports = [
-        r for r in all_reports 
-        if r.source == "dwd" or (r.source == "nina" and r.author == "DWD")
-        or "dwd" in r.author.lower()
-    ]
-    
+    dwd_reports = []
+    for r, r_lat, r_lon in all_reports:
+        is_dwd = (
+            r.source == "dwd"
+            or (r.source == "nina" and r.author == "DWD")
+            or "dwd" in r.author.lower()
+        )
+        if not is_dwd:
+            continue
+
+        matched = True
+        if (lat is not None and lon is not None) or q:
+            matched_by_dist = False
+            matched_by_name = False
+
+            if lat is not None and lon is not None:
+                from geopy.distance import geodesic
+                dist = geodesic((lat, lon), (r_lat, r_lon)).kilometers
+                if dist <= 30.0:
+                    matched_by_dist = True
+
+            if q:
+                q_clean = q.strip().lower()
+                if q_clean in r.text.lower() or q_clean in getattr(r, "author", "").lower():
+                    matched_by_name = True
+
+            matched = matched_by_dist or matched_by_name
+
+        if not matched:
+            continue
+
+        dwd_reports.append((r, r_lat, r_lon))
+
     if not dwd_reports:
-        return DwdStatus(active=False)
+        return DwdStatus(active=False, temperature=temperature)
 
     # Sort by severity (Stufe/Level X in text) then by timestamp
     def warning_level(text: str) -> int:
@@ -322,11 +412,12 @@ def get_dwd_status() -> DwdStatus:
         return int(match.group(1)) if match else 0
 
     # Pick the one with highest level, then newest
-    best = sorted(
-        dwd_reports, 
-        key=lambda r: (warning_level(r.text), r.timestamp), 
+    best_item = sorted(
+        dwd_reports,
+        key=lambda item: (warning_level(item[0].text), item[0].timestamp),
         reverse=True
     )[0]
+    best = best_item[0]
 
     return DwdStatus(
         active=True,
@@ -334,7 +425,103 @@ def get_dwd_status() -> DwdStatus:
         headline=best.text.split(":")[0][:100],
         description=best.text,
         timestamp=best.timestamp,
-        url=getattr(best, "url", "https://www.dwd.de") or "https://www.dwd.de"
+        url=f"https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html?ort={q or 'Mannheim'}",
+        temperature=temperature
+    )
+
+
+@app.get("/api/pegel/status", response_model=PegelStatus)
+async def get_pegel_status(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> PegelStatus:
+    """Get the nearest water level (pegel) station information from PEGELONLINE."""
+    temp_lat = lat if lat is not None else 49.534767
+    temp_lon = lon if lon is not None else 8.461813
+
+    stations = []
+    for radius in [30, 50, 100]:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(
+                    f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?"
+                    f"latitude={temp_lat}&longitude={temp_lon}&radius={radius}"
+                    f"&includeTimeseries=true&includeCurrentMeasurement=true"
+                )
+                if res.status_code == 200:
+                    stations = res.json()
+                    if stations:
+                        break
+        except Exception:
+            pass
+
+    if not stations:
+        return PegelStatus(active=False)
+
+    from geopy.distance import geodesic
+    best_station = None
+    best_dist = float("inf")
+    best_w_timeseries = None
+
+    for station in stations:
+        st_lat = station.get("latitude")
+        st_lon = station.get("longitude")
+        if st_lat is None or st_lon is None:
+            continue
+        
+        timeseries_list = station.get("timeseries") or []
+        w_ts = None
+        for ts in timeseries_list:
+            if ts.get("shortname") == "W" and ts.get("currentMeasurement"):
+                w_ts = ts
+                break
+        
+        if not w_ts:
+            continue
+
+        dist = geodesic((temp_lat, temp_lon), (st_lat, st_lon)).kilometers
+        if dist < best_dist:
+            best_dist = dist
+            best_station = station
+            best_w_timeseries = w_ts
+
+    if not best_station or not best_w_timeseries:
+        return PegelStatus(active=False)
+
+    curr = best_w_timeseries["currentMeasurement"]
+    val = curr.get("value")
+    timestamp_str = curr.get("timestamp")
+    timestamp = None
+    if timestamp_str:
+        try:
+            if timestamp_str.endswith("Z"):
+                timestamp_str = timestamp_str[:-1] + "+00:00"
+            timestamp = datetime.fromisoformat(timestamp_str)
+        except Exception:
+            pass
+
+    state_raw = curr.get("stateMnwMhw") or "normal"
+    state_display = "Normal"
+    if state_raw.lower() in ("low", "niedrigwasser", "mnw"):
+        state_display = "Niedrigwasser"
+    elif state_raw.lower() in ("high", "hochwasser", "mhw", "above_mhw"):
+        state_display = "Hochwasser"
+
+    station_name = best_station.get("shortname")
+    water_name = best_station.get("water", {}).get("longname") or best_station.get("water", {}).get("shortname") or "RHEIN"
+    
+    url = f"https://www.pegelonline.wsv.de/gast/pegelinformationen?scrollPosition=0&gewaesser={water_name.upper()}"
+
+    return PegelStatus(
+        active=True,
+        station=station_name,
+        water=water_name,
+        value=val,
+        unit=best_w_timeseries.get("unit") or "cm",
+        timestamp=timestamp,
+        state=state_display,
+        url=url
     )
 
 
