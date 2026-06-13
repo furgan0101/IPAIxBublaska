@@ -1,8 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, PanelLeftClose, PanelLeftOpen, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  FileText,
+  PanelLeftClose,
+  PanelLeftOpen,
+  RotateCcw,
+} from "lucide-react";
 
 import {
   MOCK_REPORTS,
@@ -10,6 +17,7 @@ import {
   type CrisisReport,
   type RiskLevel,
 } from "@/lib/mockReports";
+import { API_BASE } from "@/lib/types";
 import { adaptAll } from "@/lib/liveAdapter";
 import { firstSignalAt } from "@/lib/mediaResponse";
 import {
@@ -25,6 +33,8 @@ import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
+import ToastStack, { type DashboardToast } from "./ToastStack";
+import LageberichtPrint from "./LageberichtPrint";
 import TagFilter from "./TagFilter";
 import CityFocusPicker from "./CityFocusPicker";
 import CommandBanner from "./CommandBanner";
@@ -82,7 +92,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
-  const { incidents, debunked, health, online } = useDashboard();
+  const { incidents, debunked, health, online, refresh } = useDashboard();
 
   const mode: DataMode = !online
     ? "offline"
@@ -90,14 +100,87 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       ? "live"
       : "mock";
 
-  // Real pipeline output in live mode; the curated mock set otherwise — the
-  // dashboard always has something meaningful to show (offline judging!).
-  const allReports: CrisisReport[] = useMemo(
-    () =>
-      mode === "live"
-        ? adaptAll(incidents ?? [], debunked ?? [])
-        : MOCK_REPORTS,
-    [mode, incidents, debunked],
+  // Real pipeline output whenever the backend is reachable (in mock mode it
+  // serves the synthetic Konstanz feed) — dispatch/SOP/classified state lives
+  // on the backend, so the Leitstelle workflow needs the real pipeline. The
+  // bundled dataset only covers a fully offline demo (offline judging!).
+  const allReports: CrisisReport[] = useMemo(() => {
+    if (!online) return MOCK_REPORTS;
+    const adapted = adaptAll(incidents ?? [], debunked ?? []);
+    return adapted.length > 0 ? adapted : MOCK_REPORTS;
+  }, [online, incidents, debunked]);
+
+  // ------------------------------------------------ dispatch + toasts
+  const [toasts, setToasts] = useState<DashboardToast[]>([]);
+  const toastSeq = useRef(0);
+
+  const pushToast = useCallback(
+    (kind: DashboardToast["kind"], title: string, detail?: string): void => {
+      const id = ++toastSeq.current;
+      setToasts((prev) => [...prev.slice(-2), { id, kind, title, detail }]);
+      window.setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 6000);
+    },
+    [],
+  );
+
+  const dismissToast = useCallback((id: number): void => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
+  // ------------------------------------------------ PDF export (print)
+  // A print request carries the optional focus incident; the nonce re-triggers
+  // the effect even when the same target is exported twice in a row. window.print
+  // runs from an effect so the print document is committed to the DOM first.
+  const [printRequest, setPrintRequest] = useState<{
+    focus: CrisisReport | null;
+    nonce: number;
+  } | null>(null);
+
+  const requestPrint = useCallback((focus: CrisisReport | null): void => {
+    setPrintRequest({ focus, nonce: Date.now() });
+  }, []);
+
+  useEffect(() => {
+    if (!printRequest) return;
+    const id = window.setTimeout(() => window.print(), 0);
+    return () => window.clearTimeout(id);
+  }, [printRequest]);
+
+  // Reset to the full-sector document once the dialog closes, so a later
+  // native Ctrl/Cmd+P prints the Lagebericht rather than the last incident.
+  useEffect(() => {
+    const reset = (): void => setPrintRequest(null);
+    window.addEventListener("afterprint", reset);
+    return () => window.removeEventListener("afterprint", reset);
+  }, []);
+
+  const dispatchIncident = useCallback(
+    async (report: CrisisReport): Promise<boolean> => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/incidents/${encodeURIComponent(report.id)}/dispatch`,
+          { method: "POST" },
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        pushToast(
+          "success",
+          "Dispatched to Leitstelle",
+          `${report.crisisType} · ${report.id} handed to the control centre; SOP checklist confirmed.`,
+        );
+        void refresh();
+        return true;
+      } catch {
+        pushToast(
+          "error",
+          "Dispatch failed",
+          "Backend unreachable — the incident was NOT handed off.",
+        );
+        return false;
+      }
+    },
+    [pushToast, refresh],
   );
 
   const reports = useMemo(
@@ -274,7 +357,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const modeMeta = MODE_META[mode];
 
   return (
-    <div className="cl-fade-in flex h-screen flex-col overflow-hidden bg-background">
+    <>
+    <div className="cl-app-shell cl-fade-in flex h-screen flex-col overflow-hidden bg-background">
       {/* Flag rule across the top edge. */}
       <div className="flex h-1 shrink-0 flex-col" aria-hidden>
         <div className="flex-1 bg-black" />
@@ -343,6 +427,16 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
               Reset View
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => requestPrint(null)}
+            title="Export the current sector picture as a printable Lagebericht (PDF)"
+            className="hidden items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted md:flex"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">Export Lagebericht (PDF)</span>
+          </button>
 
           <a
             href="/analytics"
@@ -520,8 +614,20 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         )}
 
         {/* Report dossier */}
-        <DetailPanel report={selected} onClose={() => setSelectedId(null)} />
+        <DetailPanel
+          report={selected}
+          onClose={() => setSelectedId(null)}
+          onDispatch={dispatchIncident}
+          onExportPdf={requestPrint}
+        />
       </div>
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
+
+    {/* Print-only report — hidden on screen, revealed by @media print. Full
+        sector Lagebericht by default, or a single-incident dossier on focus. */}
+    <LageberichtPrint reports={allReports} focus={printRequest?.focus ?? null} />
+    </>
   );
 }

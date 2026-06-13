@@ -34,7 +34,7 @@ from ingestion.geocode import Geocoder
 from ingestion.mastodon import MastodonConnector
 from ingestion.nina import NinaConnector
 from ingestion.presseportal import PresseportalConnector
-from ingestion.storage import FeedStore, StoredReport, content_hash
+from ingestion.storage import DispatchState, FeedStore, StoredReport, content_hash
 from logic.geospatial import cluster_reports
 from logic.guidance import action_hint
 from logic.verification import Assessment, annotate_report, assess_report
@@ -366,9 +366,22 @@ class IngestionService:
             ingested_at=datetime.now(timezone.utc),
         )
 
+    def record_dispatch(
+        self, incident_id: str, dispatched_at: datetime, completed_tasks: list[str]
+    ) -> None:
+        """Persist an incident's dispatch state (manual handoff or auto-alert)
+        so it is re-applied to the snapshot after a rebuild or restart."""
+        self._store.set_dispatched(incident_id, dispatched_at, completed_tasks)
+
+    def load_dispatch_state(self) -> dict[str, DispatchState]:
+        """All persisted dispatch records, re-applied to incidents when the
+        snapshot is rebuilt (see main._apply_dispatch_state)."""
+        return self._store.load_dispatched()
+
     async def reset(self) -> dict[str, int]:
         """Demo reset in live mode: wipe the store and re-poll immediately."""
         await asyncio.to_thread(self._store.clear)
+        await asyncio.to_thread(self._store.clear_dispatched)
         self._publish([], [], [])
         return await self.poll_once()
 

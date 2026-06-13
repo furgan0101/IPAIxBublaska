@@ -116,6 +116,25 @@ def test_gazetteer_finds_sector_places() -> None:
     assert gazetteer.find("irgendwo am See, nichts Genaues") is None
 
 
+def test_gazetteer_resolves_landmarks_offline() -> None:
+    """Sub-city landmarks pin precisely, beating the town centroid."""
+    ferry = gazetteer.LANDMARKS["fährhafen staad"]
+    assert gazetteer.find("Rauchsäule am Fährhafen Staad sichtbar") == ferry
+    assert ferry != gazetteer.PLACES["staad"]  # landmark, not the district pin
+    assert (
+        gazetteer.find("Menschenmenge vor dem Konzil Konstanz")
+        == gazetteer.LANDMARKS["konzil konstanz"]
+    )
+    assert (
+        gazetteer.find("Polizeieinsatz am Herosé-Park")
+        == gazetteer.LANDMARKS["herosé-park"]
+    )
+    assert (
+        gazetteer.find("Smoke near the cathedral reported")
+        == gazetteer.LANDMARKS["cathedral"]
+    )
+
+
 def test_place_candidates_strip_roads_and_district_qualifiers() -> None:
     hint = "Talheim, K 5919, B 523 / Lkr. Tuttlingen"
     assert place_candidates(hint) == ["Talheim", "Tuttlingen"]
@@ -289,6 +308,78 @@ def test_storage_roundtrip_and_geocode_cache(tmp_path: Path) -> None:
 
     store.clear()
     assert store.known_keys() == set()
+
+
+def test_dispatched_incidents_roundtrip(tmp_path: Path) -> None:
+    store = FeedStore(tmp_path / "t.db")
+    store.init()
+    now = datetime.now(timezone.utc)
+
+    store.set_dispatched("INC-001", now, ["Confirm fire-brigade dispatch", "Cordon"])
+    store.set_dispatched("INC-002", now, [])  # auto-alert: dispatch without checklist
+
+    loaded = store.load_dispatched()
+    assert set(loaded) == {"INC-001", "INC-002"}
+    assert loaded["INC-001"].dispatched_at == now
+    assert loaded["INC-001"].completed_tasks == ["Confirm fire-brigade dispatch", "Cordon"]
+    assert loaded["INC-002"].completed_tasks == []
+
+    # INSERT OR REPLACE: a second dispatch of the same id overwrites cleanly.
+    store.set_dispatched("INC-001", now, ["Confirm fire-brigade dispatch", "Cordon", "Reroute"])
+    assert store.load_dispatched()["INC-001"].completed_tasks[-1] == "Reroute"
+
+    store.clear_dispatched()
+    assert store.load_dispatched() == {}
+
+
+def test_persisted_dispatch_reapplied_on_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dispatch persisted to SQLite must be re-applied (dispatched=True,
+    matching SOP tasks completed) when incidents are rebuilt from scratch —
+    the restart-survival contract."""
+    import main
+    from logic.geospatial import cluster_reports
+
+    settings = make_settings(tmp_path)
+    service = IngestionService(settings, [FakeConnector([])], lambda *a: None)
+    service._store.init()
+    monkeypatch.setattr(main, "ingestion_service", service)
+    monkeypatch.setattr(main, "_dispatch_hydrated", False)
+    main._dispatch_registry.clear()
+
+    now = datetime.now(timezone.utc)
+    fire_tasks = [
+        "Confirm fire-brigade dispatch",
+        "Establish 300 m cordon",
+        "Reroute pedestrian/car traffic",
+    ]
+    # Persist the dispatch BEFORE the incident exists in memory (simulating a
+    # restart: registry is empty, only SQLite remembers the handoff).
+    service.record_dispatch("INC-001", now, fire_tasks)
+
+    reports = [
+        RawReport(
+            id=f"F{i}",
+            source="twitter",
+            author="@witness",
+            text="Brand am Bahnhof Konstanz",
+            event_type="fire",
+            lat=47.6603,
+            lon=9.1758,
+            timestamp=now + timedelta(minutes=i),
+        )
+        for i in range(3)
+    ]
+    incidents = main._apply_dispatch_state(cluster_reports(reports))
+    assert main._dispatch_hydrated  # hydrated from SQLite on first rebuild
+
+    incident = incidents[0]
+    assert incident.id == "INC-001"
+    assert incident.dispatched and incident.dispatched_at == now
+    assert all(task.completed for task in incident.sop_tasks)
+
+    main._dispatch_registry.clear()
 
 
 # --- ingestion service (end to end, fake connector) ---------------------------------------

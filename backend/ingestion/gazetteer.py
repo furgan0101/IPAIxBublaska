@@ -142,11 +142,42 @@ PLACES: dict[str, tuple[float, float]] = {
     "sigmaringen": (48.0870, 9.2160),
 }
 
-# Longest names first so "stein am rhein" wins over a hypothetical "rhein".
+#: Sub-city landmarks in the Konstanz demo sector — pin-point precision for
+#: the places eyewitness reports actually name, with zero network calls.
+#: Checked together with PLACES (longest match wins), so "Fährhafen Staad"
+#: resolves to the ferry port itself, not the Staad district centroid, and
+#: never escalates to Nominatim.
+LANDMARKS: dict[str, tuple[float, float]] = {
+    # Staad ferry port (Konstanz–Meersburg car ferry)
+    "staad fähre": (47.6775, 9.2061),
+    "fährhafen staad": (47.6775, 9.2061),
+    "fähre staad": (47.6775, 9.2061),
+    "autofähre konstanz": (47.6775, 9.2061),
+    # Konstanz Minster
+    "münster konstanz": (47.6628, 9.1755),
+    "konstanzer münster": (47.6628, 9.1755),
+    "münster unserer lieben frau": (47.6628, 9.1755),
+    "cathedral": (47.6628, 9.1755),
+    # Council building (Konzil)
+    "konzil konstanz": (47.6596, 9.1785),
+    "konzilgebäude": (47.6596, 9.1785),
+    "konzil": (47.6596, 9.1785),
+    # Herosé-Park (Seerhein shore)
+    "herosé-park": (47.6682, 9.1718),
+    "herosé park": (47.6682, 9.1718),
+    "herosepark": (47.6682, 9.1718),
+    "herose-park": (47.6682, 9.1718),
+}
+
+#: Combined lookup — landmarks and town centroids share one matcher.
+_ALL_PLACES: dict[str, tuple[float, float]] = {**PLACES, **LANDMARKS}
+
+# Longest names first so "fährhafen staad" wins over "staad" and
+# "stein am rhein" over a hypothetical "rhein".
 _PATTERN: re.Pattern[str] = re.compile(
     "|".join(
         rf"\b{re.escape(name)}\b"
-        for name in sorted(PLACES, key=len, reverse=True)
+        for name in sorted(_ALL_PLACES, key=len, reverse=True)
     ),
     re.IGNORECASE,
 )
@@ -157,4 +188,4 @@ def find(text: str) -> tuple[float, float] | None:
     match = _PATTERN.search(text)
     if match is None:
         return None
-    return PLACES[match.group(0).lower()]
+    return _ALL_PLACES[match.group(0).lower()]

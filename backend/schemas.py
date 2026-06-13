@@ -80,6 +80,15 @@ class RawReport(BaseModel):
         return None
 
 
+class SOPTask(BaseModel):
+    """One actionable checklist item for responders, tagged with the agency
+    responsible (Polizei / Feuerwehr / THW / Rettungsdienst / LRA)."""
+
+    task: str
+    agency: str
+    completed: bool = False
+
+
 class SourceReport(BaseModel):
     """Compact view of one corroborating raw report, embedded in an incident
     so the dashboard can show a per-incident source timeline."""
@@ -118,6 +127,20 @@ class VerifiedIncident(BaseModel):
     summary: str
     severity: Literal["high", "moderate", "low"]
     action_hint: str = Field(description="Concise recommended responder action")
+    dispatched: bool = Field(
+        default=False, description="Whether this incident has been sent to the dispatcher"
+    )
+    dispatched_at: datetime | None = Field(
+        default=None, description="When the incident was dispatched"
+    )
+    classified: bool = Field(
+        default=False,
+        description="Whether this is a sensitive security incident requiring "
+        "information discipline",
+    )
+    sop_tasks: list[SOPTask] = Field(
+        default_factory=list, description="Actionable checklist tasks for responders"
+    )
     sources: list[SourceReport] = Field(
         default_factory=list, description="Corroborating reports, chronological"
     )

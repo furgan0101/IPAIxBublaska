@@ -12,6 +12,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
+import { Lock } from "lucide-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import "leaflet/dist/leaflet.css";
 
@@ -46,6 +47,22 @@ function nodeIcon(color: string, selected: boolean): L.DivIcon {
   return L.divIcon({
     className: "cl-node-wrap",
     html: `<span class="cl-node${selected ? " cl-node--selected" : ""}" style="--node:${color}"><span class="cl-node-ring"></span><span class="cl-node-core"></span></span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    tooltipAnchor: [0, -size / 2],
+  });
+}
+
+/** Security-classified incidents render as a lock badge, not a signal dot —
+ * the marker itself signals "information discipline" clearance. */
+function lockIcon(selected: boolean): L.DivIcon {
+  const size = selected ? 32 : 26;
+  const svg = renderToStaticMarkup(
+    createElement(Lock, { size: 13, strokeWidth: 2.5, "aria-hidden": true }),
+  );
+  return L.divIcon({
+    className: "cl-node-wrap",
+    html: `<span class="cl-node-lock${selected ? " cl-node-lock--selected" : ""}">${svg}</span>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     tooltipAnchor: [0, -size / 2],
@@ -409,6 +426,11 @@ export default function CrisisMap({
     return map;
   }, []);
 
+  const lockIcons = useMemo(
+    () => ({ idle: lockIcon(false), selected: lockIcon(true) }),
+    [],
+  );
+
   return (
     <div className={`h-full w-full ${armedTool ? "cl-armed" : ""}`}>
     <MapContainer
@@ -472,8 +494,12 @@ export default function CrisisMap({
           <Marker
             key={`${report.id}-${isSelected}`}
             position={report.coordinates}
-            icon={icons.get(`${report.status}-${isSelected}`)}
-            zIndexOffset={isSelected ? 1000 : 0}
+            icon={
+              report.classified
+                ? lockIcons[isSelected ? "selected" : "idle"]
+                : icons.get(`${report.status}-${isSelected}`)
+            }
+            zIndexOffset={isSelected ? 1000 : report.classified ? 500 : 0}
             eventHandlers={{ click: () => onSelect(report.id) }}
           >
             <Tooltip
@@ -495,6 +521,12 @@ export default function CrisisMap({
                     {report.confidence}%
                   </span>
                 </p>
+                {report.classified && (
+                  <p className="flex items-center gap-1.5 pt-0.5 font-semibold text-violet-600 dark:text-violet-400">
+                    <Lock className="h-3 w-3 shrink-0" aria-hidden />
+                    RESTRICTED · Police Command
+                  </p>
+                )}
               </div>
             </Tooltip>
           </Marker>

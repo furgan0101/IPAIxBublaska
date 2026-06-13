@@ -56,7 +56,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="relative h-screen overflow-hidden bg-background">
+    <div className="cl-root relative h-screen overflow-hidden bg-background">
       {phase !== "landing" && (
         <Dashboard theme={theme} onToggleTheme={toggleTheme} />
       )}

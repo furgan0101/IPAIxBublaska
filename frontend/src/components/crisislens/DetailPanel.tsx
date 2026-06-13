@@ -1,14 +1,19 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import {
   AtSign,
+  CheckCircle2,
   Clock,
   CloudLightning,
   ExternalLink,
+  FileDown,
+  ListChecks,
+  Lock,
   MapPin,
   MessagesSquare,
   Newspaper,
+  Send,
   ShieldAlert,
   UserRound,
   X,
@@ -53,6 +58,17 @@ const RISK_CLS: Record<CrisisReport["riskLevel"], string> = {
   Low: "border-border bg-muted text-muted-foreground",
 };
 
+/** Colour-coded responder agency badges (BW conventions). */
+const AGENCY_BADGE: Record<string, string> = {
+  Feuerwehr: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
+  Polizei: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+  THW: "border-cyan-600/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
+  Rettungsdienst:
+    "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  LRA: "border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+};
+const AGENCY_BADGE_FALLBACK = "border-border bg-muted text-muted-foreground";
+
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -64,13 +80,22 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 interface DetailPanelProps {
   report: CrisisReport | null;
   onClose: () => void;
+  /** Manual Leitstelle handoff; resolves true on success (enables the UI flip). */
+  onDispatch?: (report: CrisisReport) => Promise<boolean>;
+  /** Export this incident as a printable single-event PDF. */
+  onExportPdf?: (report: CrisisReport) => void;
 }
 
 /**
  * Right-hand report dossier. The wrapper animates its width so the map
  * column shrinks smoothly; the last report stays rendered while closing.
  */
-export default function DetailPanel({ report, onClose }: DetailPanelProps) {
+export default function DetailPanel({
+  report,
+  onClose,
+  onDispatch,
+  onExportPdf,
+}: DetailPanelProps) {
   const lastReport = useRef<CrisisReport | null>(null);
   if (report) lastReport.current = report;
   const shown = report ?? lastReport.current;
@@ -82,18 +107,143 @@ export default function DetailPanel({ report, onClose }: DetailPanelProps) {
       aria-hidden={!report}
     >
       <div className="flex h-full w-full min-w-[360px] flex-col border-l border-border bg-background">
-        {shown && <PanelContent report={shown} onClose={onClose} />}
+        {shown && (
+          <PanelContent
+            key={shown.id}
+            report={shown}
+            onClose={onClose}
+            onDispatch={onDispatch}
+            onExportPdf={onExportPdf}
+          />
+        )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * SOP Action Checklist + Leitstelle dispatch. Checkbox ticks are local UI
+ * state (responder's working notes); the dispatch handoff is server state
+ * and completes the whole list. Remounts per incident via the parent key.
+ */
+function SopChecklist({
+  report,
+  onDispatch,
+}: {
+  report: CrisisReport;
+  onDispatch?: (report: CrisisReport) => Promise<boolean>;
+}) {
+  const tasks = report.sopTasks ?? [];
+  const [localDone, setLocalDone] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
+  // Optimistic flip so the badge appears before the next poll round-trip.
+  const [localDispatchedAt, setLocalDispatchedAt] = useState<string | null>(null);
+
+  const dispatched = Boolean(report.dispatched) || localDispatchedAt !== null;
+  const dispatchedAt = report.dispatchedAt ?? localDispatchedAt;
+
+  const handleDispatch = async (): Promise<void> => {
+    if (!onDispatch || busy || dispatched) return;
+    setBusy(true);
+    try {
+      if (await onDispatch(report)) {
+        setLocalDispatchedAt(new Date().toISOString());
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (tasks.length === 0) return null;
+
+  return (
+    <section>
+      <div className="flex items-center gap-2">
+        <ListChecks className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+        <SectionLabel>SOP action checklist</SectionLabel>
+      </div>
+      <ul className="mt-2.5 space-y-1.5">
+        {tasks.map((task) => {
+          const checked = dispatched || task.completed || Boolean(localDone[task.task]);
+          return (
+            <li key={task.task}>
+              <label
+                className={`flex items-start gap-2.5 rounded-lg border border-border bg-card px-3.5 py-2.5 transition-colors ${
+                  dispatched ? "" : "cursor-pointer hover:bg-muted/60"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={dispatched}
+                  onChange={() =>
+                    setLocalDone((prev) => ({ ...prev, [task.task]: !checked }))
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
+                />
+                <span
+                  className={`min-w-0 flex-1 text-[13px] leading-snug ${
+                    checked
+                      ? "text-muted-foreground line-through"
+                      : "text-foreground/90"
+                  }`}
+                >
+                  {task.task}
+                </span>
+                <span
+                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                    AGENCY_BADGE[task.agency] ?? AGENCY_BADGE_FALLBACK
+                  }`}
+                >
+                  {task.agency}
+                </span>
+              </label>
+            </li>
+          );
+        })}
+      </ul>
+
+      {dispatched ? (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
+          Dispatched to Control Center
+          {dispatchedAt && (
+            <span className="ml-auto font-mono text-[11px] font-normal tabular-nums">
+              {safeNewDate(dispatchedAt).toLocaleTimeString("de-DE", {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}{" "}
+              local
+            </span>
+          )}
+        </div>
+      ) : (
+        onDispatch && (
+          <button
+            type="button"
+            onClick={() => void handleDispatch()}
+            disabled={busy}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+          >
+            <Send className="h-4 w-4" aria-hidden />
+            {busy ? "Dispatching…" : "Dispatch to Leitstelle"}
+          </button>
+        )
+      )}
+    </section>
   );
 }
 
 function PanelContent({
   report,
   onClose,
+  onDispatch,
+  onExportPdf,
 }: {
   report: CrisisReport;
   onClose: () => void;
+  onDispatch?: (report: CrisisReport) => Promise<boolean>;
+  onExportPdf?: (report: CrisisReport) => void;
 }) {
   const meta = STATUS_META[report.status];
   const stamp = safeNewDate(report.timestamp);
@@ -113,21 +263,34 @@ function PanelContent({
               {meta.badge}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close report panel"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {onExportPdf && (
+              <button
+                type="button"
+                onClick={() => onExportPdf(report)}
+                title="Download this incident as a printable PDF"
+                className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                <FileDown className="h-3.5 w-3.5" />
+                Export PDF
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close report panel"
+              className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <h2 className="mt-4 font-display text-[26px] font-semibold leading-tight">
           {report.title}
         </h2>
 
-        {report.externalUrl && (
+        {!report.classified && report.externalUrl && (
           <a
             href={report.externalUrl}
             target="_blank"
@@ -164,12 +327,41 @@ function PanelContent({
 
       {/* Scrollable body */}
       <div className="cl-scroll min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-6">
+        {report.classified && (
+          <section className="flex items-start gap-3 rounded-lg border border-red-600/40 bg-red-500/10 p-4">
+            <Lock
+              className="mt-0.5 h-4 w-4 shrink-0 text-red-600 dark:text-red-400"
+              aria-hidden
+            />
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.12em] text-red-700 dark:text-red-300">
+                Information discipline active
+              </p>
+              <p className="mt-1 text-[13px] leading-relaxed text-foreground/90">
+                Raw intelligence is restricted. Secure handoff to Police
+                Command initiated.
+              </p>
+            </div>
+          </section>
+        )}
+
         <section>
           <SectionLabel>AI-generated summary</SectionLabel>
           <p className="mt-2.5 rounded-lg border border-border bg-card p-4 text-[13px] leading-relaxed text-foreground/90">
             {report.aiSummary}
           </p>
         </section>
+
+        {report.actionHint && (
+          <section>
+            <SectionLabel>Recommended action</SectionLabel>
+            <p className="mt-2.5 rounded-r-lg border-l-2 border-gold bg-card px-4 py-3.5 text-[13px] leading-relaxed text-foreground/90">
+              {report.actionHint}
+            </p>
+          </section>
+        )}
+
+        <SopChecklist report={report} onDispatch={onDispatch} />
 
         <section className="rounded-lg border border-border bg-card p-5">
           <SectionLabel>AI-assisted confidence</SectionLabel>
@@ -221,7 +413,8 @@ function PanelContent({
           </p>
         </section>
 
-        {((report.mediaPreviews?.length ?? 0) > 0 || report.mediaConsistency) && (
+        {!report.classified &&
+          ((report.mediaPreviews?.length ?? 0) > 0 || report.mediaConsistency) && (
           <section>
             <SectionLabel>Analyzed media</SectionLabel>
             {(report.mediaPreviews?.length ?? 0) > 0 && (
@@ -258,6 +451,16 @@ function PanelContent({
           </section>
         )}
 
+        {report.classified ? (
+          <section>
+            <SectionLabel>Evidence</SectionLabel>
+            <p className="mt-2.5 flex items-center gap-2 rounded-lg border border-dashed border-border bg-card p-4 text-xs text-muted-foreground">
+              <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Source feed restricted — raw reports and media are available to
+              Police Command only.
+            </p>
+          </section>
+        ) : (
         <section>
           <SectionLabel>Evidence ({report.evidenceLinks.length})</SectionLabel>
           <ul className="mt-2.5 space-y-2">
@@ -309,6 +512,7 @@ function PanelContent({
             })}
           </ul>
         </section>
+        )}
       </div>
 
       {/* Footer disclaimer */}

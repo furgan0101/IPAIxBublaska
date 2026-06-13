@@ -9,6 +9,7 @@ only makes ingested OSINT, verdicts and geocodes survive restarts.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -34,6 +35,16 @@ class StoredReport:
     credible: bool
     reason: str | None
     score: float
+
+
+@dataclass(frozen=True)
+class DispatchState:
+    """Persisted Leitstelle-handoff state for one incident. `completed_tasks`
+    holds the SOP task descriptions ticked off at handoff (empty for an
+    automatic alert, which dispatches without working the checklist)."""
+
+    dispatched_at: datetime
+    completed_tasks: list[str]
 
 
 class FeedStore:
@@ -73,6 +84,13 @@ class FeedStore:
                        lat         REAL,
                        lon         REAL,
                        resolved_at TEXT NOT NULL
+                   )"""
+            )
+            con.execute(
+                """CREATE TABLE IF NOT EXISTS dispatched_incidents (
+                       incident_id     TEXT PRIMARY KEY,
+                       dispatched_at   TEXT NOT NULL,
+                       completed_tasks TEXT NOT NULL
                    )"""
             )
         con.close()
@@ -182,4 +200,52 @@ class FeedStore:
                 "INSERT OR REPLACE INTO geocode_cache VALUES (?, ?, ?, ?)",
                 (query, lat, lon, resolved_at.isoformat()),
             )
+        con.close()
+
+    # -- dispatched incidents --------------------------------------------------
+
+    def set_dispatched(
+        self,
+        incident_id: str,
+        dispatched_at: datetime,
+        completed_tasks: list[str],
+    ) -> None:
+        """Record (or update) the dispatch state of one incident so a manual
+        Leitstelle handoff — and its completed SOP checklist — survives a
+        snapshot rebuild and a backend restart. `completed_tasks` is stored as
+        a JSON array of task descriptions."""
+        with self._connect() as con:
+            con.execute(
+                "INSERT OR REPLACE INTO dispatched_incidents VALUES (?, ?, ?)",
+                (
+                    incident_id,
+                    dispatched_at.isoformat(),
+                    json.dumps(completed_tasks, ensure_ascii=False),
+                ),
+            )
+        con.close()
+
+    def load_dispatched(self) -> dict[str, DispatchState]:
+        """All persisted dispatch records, keyed by incident id."""
+        with self._connect() as con:
+            rows = con.execute(
+                "SELECT incident_id, dispatched_at, completed_tasks "
+                "FROM dispatched_incidents"
+            ).fetchall()
+        con.close()
+        result: dict[str, DispatchState] = {}
+        for incident_id, dispatched_at, completed_json in rows:
+            try:
+                completed = [str(task) for task in json.loads(completed_json)]
+            except (ValueError, TypeError):
+                completed = []
+            result[incident_id] = DispatchState(
+                dispatched_at=datetime.fromisoformat(dispatched_at),
+                completed_tasks=completed,
+            )
+        return result
+
+    def clear_dispatched(self) -> None:
+        with self._connect() as con:
+            con.execute("DELETE FROM dispatched_incidents")
         con.close()

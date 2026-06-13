@@ -50,8 +50,9 @@ def make_report(**overrides: object) -> RawReport:
 
 
 def test_mock_data_matches_raw_report_schema() -> None:
+    """Every mock-feed item must parse as a RawReport (count is feed-dependent)."""
     reports = load_raw_reports()
-    assert len(reports) == 12
+    assert len(reports) >= 12
 
 
 def test_recycled_footage_is_flagged() -> None:
@@ -101,14 +102,15 @@ def test_reports_outside_radius_stay_separate() -> None:
 
 
 def test_full_pipeline_on_mock_data() -> None:
-    result = run_pipeline(load_raw_reports())
-    assert len(result["debunked"]) == 4
-    assert sum(i.report_count for i in result["incidents"]) == 8
-    assert {i.event_type for i in result["incidents"]} == {
-        "flood",
-        "fire",
-        "storm",
-        "power_outage",
+    """Invariants that hold for any regenerated feed: nothing lost, hoaxes
+    caught, the canonical Konstanz demo scenarios present."""
+    reports = load_raw_reports()
+    result = run_pipeline(reports)
+    assert len(result["debunked"]) > 0
+    credible_count = sum(i.report_count for i in result["incidents"])
+    assert credible_count + len(result["debunked"]) == len(reports)
+    assert {"flood", "fire", "storm", "power_outage"} <= {
+        i.event_type for i in result["incidents"]
     }
 
 
@@ -152,10 +154,127 @@ def test_incidents_carry_guidance_and_sources() -> None:
 
 
 def test_single_source_incident_gets_low_corroboration_hint() -> None:
-    result = run_pipeline(load_raw_reports())
-    outage = next(i for i in result["incidents"] if i.event_type == "power_outage")
+    (outage,) = cluster_reports([make_report(event_type="power_outage")])
     assert outage.report_count == 1
     assert outage.action_hint.startswith("Low corroboration")
+
+
+# --- AI-generation filters (text leaks + C2PA-flagged media) ----------------------
+
+
+def test_ai_generated_text_is_flagged() -> None:
+    report = make_report(
+        text="As an AI, I cannot fulfill this request — but here is a flood alert."
+    )
+    assessment = assess_report(report)
+    assert not assessment.credible
+    assert assessment.reason == "Linguistic: AI-Generated Text Leak"
+
+
+def test_ai_generated_media_is_flagged() -> None:
+    report = make_report(media_url="https://img.example/flut_deepfake_v2.jpg")
+    assessment = assess_report(report)
+    assert not assessment.credible
+    assert assessment.reason == "Linguistic: AI-Generated Media (C2PA Flagged)"
+
+
+def test_synthetic_media_in_live_media_list_is_flagged() -> None:
+    report = make_report(
+        media=[{"url": "https://cdn.example/synthetic_fire.png", "type": "image"}]
+    )
+    assert not assess_report(report).credible
+
+
+# --- SOP checklists, classification + dispatch ------------------------------------
+
+
+def test_incident_carries_sop_checklist() -> None:
+    reports = [
+        make_report(id=f"F{i}", event_type="fire", timestamp=NOW + timedelta(minutes=i))
+        for i in range(3)
+    ]
+    (incident,) = cluster_reports(reports)
+    tasks = {(t.task, t.agency) for t in incident.sop_tasks}
+    assert ("Establish 300 m cordon", "Polizei") in tasks
+    assert all(not t.completed for t in incident.sop_tasks)
+
+
+def test_low_corroboration_prepends_recon_task() -> None:
+    (incident,) = cluster_reports([make_report(event_type="storm")])
+    assert incident.sop_tasks[0].task == "Task recon for ground truth verification"
+    assert incident.sop_tasks[0].agency == "LRA"
+
+
+def test_every_event_class_has_sop_tasks() -> None:
+    from logic.guidance import KNOWN_EVENT_TYPES, sop_tasks_for
+
+    agencies = {"Polizei", "Feuerwehr", "THW", "Rettungsdienst", "LRA"}
+    for event_type in KNOWN_EVENT_TYPES:
+        tasks = sop_tasks_for(event_type, 3, 0.9)
+        assert tasks, event_type
+        assert {t.agency for t in tasks} <= agencies, event_type
+
+
+def test_security_sensitive_incident_is_classified() -> None:
+    (terror,) = cluster_reports([make_report(event_type="terror_attack")])
+    assert terror.classified
+    (flood,) = cluster_reports([make_report(event_type="flood")])
+    assert not flood.classified
+
+
+def test_high_severity_high_confidence_auto_dispatches() -> None:
+    from main import _apply_dispatch_state, _dispatch_registry
+
+    _dispatch_registry.clear()
+    reports = [
+        make_report(id=f"F{i}", event_type="fire", timestamp=NOW + timedelta(minutes=i))
+        for i in range(3)  # confidence 0.86 >= 0.85 threshold
+    ]
+    (incident,) = _apply_dispatch_state(cluster_reports(reports))
+    assert incident.dispatched
+    assert incident.dispatched_at is not None
+    # Auto-alert hands off but does not work the checklist.
+    assert all(not t.completed for t in incident.sop_tasks)
+    # Sticky across re-clustering, timestamp preserved (no duplicate alert).
+    (again,) = _apply_dispatch_state(cluster_reports(reports))
+    assert again.dispatched_at == incident.dispatched_at
+    _dispatch_registry.clear()
+
+
+def test_moderate_severity_never_auto_dispatches() -> None:
+    from main import _apply_dispatch_state, _dispatch_registry
+
+    _dispatch_registry.clear()
+    reports = [
+        make_report(id=f"S{i}", event_type="storm", timestamp=NOW + timedelta(minutes=i))
+        for i in range(4)
+    ]
+    (incident,) = _apply_dispatch_state(cluster_reports(reports))
+    assert not incident.dispatched
+
+
+def test_manual_dispatch_completes_checklist_and_persists() -> None:
+    from main import dispatch_incident
+
+    reset_state()
+    target = next(i for i in state["incidents"] if not i.dispatched)
+    updated = dispatch_incident(target.id)
+    assert updated.dispatched
+    assert updated.dispatched_at is not None
+    assert updated.sop_tasks and all(t.completed for t in updated.sop_tasks)
+    served = next(i for i in state["incidents"] if i.id == target.id)
+    assert served.dispatched  # visible to the next GET /api/incidents
+
+
+def test_dispatch_unknown_incident_raises_404() -> None:
+    from fastapi import HTTPException
+
+    from main import dispatch_incident
+
+    reset_state()
+    with pytest.raises(HTTPException) as excinfo:
+        dispatch_incident("INC-999")
+    assert excinfo.value.status_code == 404
 
 
 # --- Live injection (POST /api/reports) ------------------------------------------
