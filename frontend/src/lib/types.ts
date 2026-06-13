@@ -104,6 +104,16 @@ export interface PegelStatus {
   url: string;
 }
 
+export interface MobiDataStatus {
+  active: boolean;
+  count: number;
+  road?: string | null;
+  location?: string | null;
+  description?: string | null;
+  distance_km?: number | null;
+  url: string;
+}
+
 /** FastAPI backend base URL (override via NEXT_PUBLIC_API_URL). */
 export const API_BASE: string =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

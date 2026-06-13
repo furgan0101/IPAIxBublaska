@@ -215,3 +215,15 @@ class PegelStatus(BaseModel):
     state: str | None = None
     url: str = "https://www.hvz.baden-wuerttemberg.de"
 
+
+class MobiDataStatus(BaseModel):
+    """Traffic and construction warnings from MobiData BW."""
+
+    active: bool
+    count: int = 0
+    road: str | None = None
+    location: str | None = None
+    description: str | None = None
+    distance_km: float | None = None
+    url: str = "https://www.verkehrsinfo-bw.de"
+

@@ -67,6 +67,7 @@ from logic.verification import (
 from schemas import (
     DebunkedReport,
     DwdStatus,
+    MobiDataStatus,
     PegelStatus,
     RawReport,
     ReportSubmission,
@@ -521,6 +522,94 @@ async def get_pegel_status(
         unit=best_w_timeseries.get("unit") or "cm",
         timestamp=timestamp,
         state=state_display,
+        url=url
+    )
+
+
+@app.get("/api/mobidata/status", response_model=MobiDataStatus)
+async def get_mobidata_status(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> MobiDataStatus:
+    """Fetch current roadworks, construction, and closure warnings from MobiData BW."""
+    temp_lat = lat if lat is not None else 49.534767
+    temp_lon = lon if lon is not None else 8.461813
+
+    geojson_data = {}
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get("https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json")
+            if res.status_code == 200:
+                geojson_data = res.json()
+    except Exception:
+        pass
+
+    if not geojson_data or not isinstance(geojson_data, dict):
+        return MobiDataStatus(active=False)
+
+    features = geojson_data.get("features") or []
+    if not features:
+        return MobiDataStatus(active=False)
+
+    from geopy.distance import geodesic
+    nearby_count = 0
+    closest_feature = None
+    closest_dist = float("inf")
+
+    def get_first_coords(geom):
+        if not geom or not isinstance(geom, dict):
+            return None
+        t = geom.get("type")
+        c = geom.get("coordinates")
+        if not c:
+            return None
+        try:
+            if t == "Point":
+                return float(c[1]), float(c[0])
+            elif t == "LineString" and len(c) > 0:
+                return float(c[0][1]), float(c[0][0])
+            elif t == "Polygon" and len(c) > 0 and len(c[0]) > 0:
+                return float(c[0][0][1]), float(c[0][0][0])
+        except (ValueError, TypeError, IndexError):
+            pass
+        return None
+
+    for f in features:
+        if not isinstance(f, dict):
+            continue
+        geom = f.get("geometry")
+        coords = get_first_coords(geom)
+        if not coords:
+            continue
+
+        dist = geodesic((temp_lat, temp_lon), coords).kilometers
+        if dist <= 30.0:
+            nearby_count += 1
+            if dist < closest_dist:
+                closest_dist = dist
+                closest_feature = f
+
+    if not closest_feature:
+        return MobiDataStatus(active=False, count=0)
+
+    props = closest_feature.get("properties") or {}
+    road = props.get("road") or props.get("roadNumber") or props.get("street") or ""
+    loc = props.get("location") or props.get("place") or props.get("name") or ""
+    desc = props.get("description") or props.get("text") or props.get("reason") or props.get("constructionReason") or ""
+
+    if not road and not loc and not desc:
+        desc = "Roadworks / construction warning"
+
+    url = "https://www.verkehrsinfo-bw.de"
+
+    return MobiDataStatus(
+        active=True,
+        count=nearby_count,
+        road=str(road)[:50] if road else None,
+        location=str(loc)[:100] if loc else None,
+        description=str(desc)[:200] if desc else None,
+        distance_km=round(closest_dist, 1),
         url=url
     )
 

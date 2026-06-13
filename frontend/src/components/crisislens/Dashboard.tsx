@@ -26,6 +26,7 @@ import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 import DwdStatusTile from "./DwdStatusTile";
 import PegelStatusTile from "./PegelStatusTile";
+import MobiDataStatusTile from "./MobiDataStatusTile";
 import DetailPanel from "./DetailPanel";
 import TagFilter from "./TagFilter";
 import FilterToolbar from "./FilterToolbar";
@@ -291,7 +292,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           (a, b) =>
             safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
         )
-        .slice(0, 100);
+        .slice(0, 150);
     },
     [allReports, region, activeTag, minConfidence],
   );
@@ -320,6 +321,11 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             lon={region?.center?.[1] ?? null}
           />
           <PegelStatusTile
+            locationName={region?.name ?? null}
+            lat={region?.center?.[0] ?? null}
+            lon={region?.center?.[1] ?? null}
+          />
+          <MobiDataStatusTile
             locationName={region?.name ?? null}
             lat={region?.center?.[0] ?? null}
             lon={region?.center?.[1] ?? null}
