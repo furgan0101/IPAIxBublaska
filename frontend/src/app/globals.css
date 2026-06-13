@@ -306,6 +306,41 @@ body {
   animation: cl-fade 0.5s ease-out both;
 }
 
+/* Scroll-triggered reveal for below-the-fold landing sections. Hidden until
+   the element crosses the viewport (toggled by the <Reveal> observer), then
+   rises into place. Reduced-motion users get the content immediately. */
+.cl-reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s cubic-bezier(0.2, 0.7, 0.3, 1),
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+.cl-reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cl-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Hairline dot-grid backdrop for landing bands — flat, single-colour dots
+   (no gradient fill), in keeping with the no-gradients rule. */
+.cl-dotgrid {
+  background-image: radial-gradient(
+    currentColor 0.5px,
+    transparent 0.5px
+  );
+  background-size: 22px 22px;
+  color: var(--border);
+}
+
 /* Thin themed scrollbars for panels and feeds. */
 .cl-scroll {
   scrollbar-width: thin;
