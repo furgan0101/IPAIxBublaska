@@ -31,7 +31,7 @@ RELATION_PROMPT: str = (
     "- 'spatial': They share a location and are likely related by context, even if not direct. "
     "- 'none': No clear relationship. "
     "Output ONLY raw JSON, exactly these keys: "
-    '{"relation_type": string, "confidence": number, "rationale": string}. '
+    '{{"relation_type": string, "confidence": number, "rationale": string}}. '
     "confidence is 0.0 to 1.0. rationale is one concise English sentence."
 )
 
