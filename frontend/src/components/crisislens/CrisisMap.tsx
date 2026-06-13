@@ -39,7 +39,7 @@ import {
   confidenceOpacity,
   type ConfidenceBand,
 } from "@/lib/confidence";
-import { API_BASE } from "@/lib/types";
+import { API_BASE, type SearchScope } from "@/lib/types";
 
 /** Overview framing for the Baden-Württemberg sector. */
 const BW_CENTER: [number, number] = [48.62, 9.05];
@@ -394,11 +394,9 @@ function MapController({
   }, [map]);
 
   useEffect(() => {
-    if (firstRun.current) {
-      firstRun.current = false;
-      return;
-    }
+    const delay = firstRun.current ? 0 : FLY_DELAY_MS;
     const timer = window.setTimeout(() => {
+      map.invalidateSize({ animate: false });
       if (selected) {
         map.flyTo(selected.coordinates, Math.max(map.getZoom(), FOCUS_ZOOM), {
           duration: 0.9,
@@ -414,7 +412,8 @@ function MapController({
         map.flyTo(BW_CENTER, BW_ZOOM, { duration: 0.9 });
         lastFocusKey.current = null;
       }
-    }, FLY_DELAY_MS);
+      firstRun.current = false;
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [map, selected, focus]);
 
@@ -452,6 +451,8 @@ interface CrisisMapProps {
   focus?: MapFocus | null;
   /** True once the user has run a location search (live-data map behaviour). */
   hasSearched?: boolean;
+  /** Active search scope (statewide / city presets) from the scope registry. */
+  scope?: SearchScope | null;
   /** Measures Layer (Command Mode planning) — all optional. */
   measures?: PlacedMeasure[];
   armedTool?: MeasureKind | null;
@@ -471,6 +472,7 @@ export default function CrisisMap({
   theme,
   focus = null,
   hasSearched = false,
+  scope = null,
   measures = [],
   armedTool = null,
   selectedMeasureId = null,
@@ -760,8 +762,8 @@ export default function CrisisMap({
   return (
     <div className={`h-full w-full ${armedTool ? "cl-armed" : ""}`}>
     <MapContainer
-      center={BW_CENTER}
-      zoom={BW_ZOOM}
+      center={scope?.center ?? BW_CENTER}
+      zoom={scope?.zoom ?? BW_ZOOM}
       className="h-full w-full"
       zoomControl={false}
     >

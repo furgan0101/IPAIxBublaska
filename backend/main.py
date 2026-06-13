@@ -37,7 +37,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, TypedDict
+from typing import Any, AsyncIterator, TypedDict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,6 +61,7 @@ logging.getLogger("vost.verification").setLevel(logging.DEBUG)
 import httpx
 from ingestion import IngestionService, IngestionSettings, default_connectors
 from ingestion.geocode import Geocoder
+from ingestion.scopes import DEFAULT_SCOPE_ID, SCOPES, scopes_for_api
 from ingestion.storage import FeedStore
 from live_incident import build_live_incidents
 from logic.geospatial import RADIUS_KM, cluster_reports
@@ -80,12 +81,14 @@ from schemas import (
     PegelStatus,
     RawReport,
     ReportSubmission,
+    ScopeSelection,
     SubmissionResult,
     VerifiedIncident,
     SourceReport,
 )
 
 DATA_FILE: Path = Path(__file__).parent / "mock_data.json"
+logger = logging.getLogger("vost.api")
 
 # Local Next.js dev server origins (CORS).
 ALLOWED_ORIGINS: list[str] = [
@@ -120,6 +123,8 @@ dynamic_incidents: list[VerifiedIncident] = []
 # Live ingestion (FEEDS_ENABLED=true): created during lifespan, None in mock mode.
 ingestion_service: IngestionService | None = None
 _ingest_task: asyncio.Task[None] | None = None
+_scope_poll_task: asyncio.Task[None] | None = None
+_mock_active_scope_id: str = DEFAULT_SCOPE_ID
 
 # Geocoder is always available (uses local gazetteer + optional Nominatim).
 _geocoder: Geocoder | None = None
@@ -685,7 +690,8 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    global ingestion_service, _ingest_task, _geocoder, _geo_client
+    global ingestion_service, _ingest_task, _scope_poll_task, _mock_active_scope_id
+    global _geocoder, _geo_client
     settings = IngestionSettings.from_env()
 
     # Shared geocoder for the /api/geocode endpoint.
@@ -705,8 +711,16 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         await ingestion_service.startup()  # persisted snapshot served instantly
         _ingest_task = asyncio.create_task(ingestion_service.run())
     else:
+        _mock_active_scope_id = (
+            settings.search_scope if settings.search_scope in SCOPES else DEFAULT_SCOPE_ID
+        )
         reset_state()
     yield
+    if _scope_poll_task is not None:
+        _scope_poll_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _scope_poll_task
+        _scope_poll_task = None
     if _ingest_task is not None:
         _ingest_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -1199,6 +1213,58 @@ async def post_poll(
     return {"status": "polled", "stats": stats}
 
 
+@app.get("/api/stream/recent")
+def get_stream_recent() -> list[dict[str, object]]:
+    """Most recent posts accepted from the real-time streams (newest first)."""
+    if ingestion_service is None:
+        return []
+    return ingestion_service.recent_stream_posts()
+
+
+@app.get("/api/scopes")
+def get_scopes() -> dict[str, object]:
+    """All selectable search scopes (single source of truth for the UI)."""
+    active = (
+        ingestion_service.scope_info()["id"]
+        if ingestion_service is not None
+        else _mock_active_scope_id
+    )
+    return scopes_for_api(str(active))
+
+
+@app.post("/api/scope")
+async def post_scope(selection: ScopeSelection) -> dict[str, object]:
+    """Switch the active search scope (live mode): wipe, re-bias, re-poll."""
+    global _mock_active_scope_id, _scope_poll_task
+    scope = SCOPES.get(selection.id)
+    if scope is None:
+        raise HTTPException(status_code=404, detail=f"Unknown scope: {selection.id}")
+    if ingestion_service is None:
+        _mock_active_scope_id = scope.id
+        return {
+            "status": "mock-mode",
+            "detail": "Set FEEDS_ENABLED=true to switch scopes on live data.",
+            "scope": scope.as_dict(),
+        }
+    if _scope_poll_task is not None and not _scope_poll_task.done():
+        _scope_poll_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await _scope_poll_task
+    await ingestion_service.set_scope(scope)
+    service = ingestion_service
+
+    async def poll_after_switch() -> None:
+        try:
+            await service.poll_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Scope-switch poll failed")
+
+    _scope_poll_task = asyncio.create_task(poll_after_switch())
+    return {"status": "ok", "scope": ingestion_service.scope_info(), "poll": "started"}
+
+
 @app.get("/api/health")
 def health() -> dict[str, object]:
     """Liveness + pipeline stats. `ai_mode`: mock / live-ready / live;
@@ -1213,6 +1279,9 @@ def health() -> dict[str, object]:
     }
     if ingestion_service is not None:
         payload["feeds"] = ingestion_service.status()
+        payload["scope"] = ingestion_service.scope_info()
+    else:
+        payload["scope"] = SCOPES[_mock_active_scope_id].as_dict()
     return payload
 
 

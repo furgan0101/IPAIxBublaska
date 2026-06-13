@@ -9,6 +9,7 @@ import {
   FileText,
   PanelLeftClose,
   PanelLeftOpen,
+  Rss,
   RotateCcw,
   Search,
 } from "lucide-react";
@@ -31,6 +32,7 @@ import {
 } from "@/lib/measures";
 import { useDashboard } from "@/hooks/useDashboard";
 import { safeNewDate, timeAgo } from "@/lib/format";
+import type { StreamPost } from "@/lib/types";
 import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
@@ -47,6 +49,7 @@ import CommandBanner from "./CommandBanner";
 import CommandConsole from "./CommandConsole";
 import ReportTimeline from "./ReportTimeline";
 import MeasurePalette from "./MeasurePalette";
+import ScopePicker from "./ScopePicker";
 
 // Leaflet touches `window` — load the map strictly client-side.
 const CrisisMap = dynamic(() => import("./CrisisMap"), {
@@ -57,6 +60,52 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
     </div>
   ),
 });
+
+const MODE_META: Record<
+  DataMode,
+  { label: string; chip: string; dot: string; ping: boolean }
+> = {
+  live: {
+    label: "Live Data",
+    chip: "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+    dot: "bg-emerald-500",
+    ping: true,
+  },
+  mock: {
+    label: "Mock Data",
+    chip: "border-gold/40 bg-gold-fill/10 text-gold",
+    dot: "bg-gold-fill",
+    ping: false,
+  },
+  offline: {
+    label: "Offline Demo",
+    chip: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
+    dot: "bg-red-500",
+    ping: false,
+  },
+};
+
+function VerdictChip({ verdict }: { verdict: StreamPost["verdict"] }) {
+  if (verdict === "verified") {
+    return (
+      <span className="shrink-0 rounded border border-emerald-600/30 bg-emerald-500/10 px-1 py-px text-[8px] font-bold tracking-wider text-emerald-700 dark:text-emerald-300">
+        VERIFIED
+      </span>
+    );
+  }
+  if (verdict === "debunked") {
+    return (
+      <span className="shrink-0 rounded border border-red-600/30 bg-red-500/10 px-1 py-px text-[8px] font-bold tracking-wider text-red-700 dark:text-red-300">
+        DEBUNKED
+      </span>
+    );
+  }
+  return (
+    <span className="shrink-0 animate-pulse rounded border border-border bg-muted px-1 py-px text-[8px] font-bold tracking-wider text-muted-foreground">
+      ANALYZING
+    </span>
+  );
+}
 
 interface DashboardProps {
   theme: "dark" | "light";
@@ -101,13 +150,33 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const deferredSearchQuery = useDeferredValue(searchQuery);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
-  const { incidents, debunked, health, online, refresh } = useDashboard();
+  const {
+    incidents,
+    debunked,
+    health,
+    scopes,
+    scopeGroups,
+    activeScope,
+    scopePending,
+    scopeError,
+    streamPosts,
+    online,
+    refresh,
+    changeScope,
+  } = useDashboard();
+  const streaming = health?.feeds?.streaming;
+  // Flash only posts that are NEW since the previous render cycle.
+  const seenPostIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const post of streamPosts ?? []) seenPostIds.current.add(post.id);
+  }, [streamPosts]);
 
   const mode: DataMode = !online
     ? "offline"
     : health?.data_mode === "live"
       ? "live"
       : "mock";
+  const modeMeta = MODE_META[mode];
 
   // Whenever the backend is reachable, show its real pipeline output (dispatch/
   // SOP/classified state lives on the backend) merged with the bundled curated
@@ -469,6 +538,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [armedTool, selectedMeasureId, selectedId, focusCity]);
 
+  const handleScopeSelect = useCallback(
+    async (id: string): Promise<void> => {
+      setSelectedId(null);
+      await changeScope(id);
+    },
+    [changeScope],
+  );
 
   const feed = useMemo(
     () => {
@@ -597,6 +673,11 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </span>
         </div>
 
+        <span className="hidden h-5 w-px bg-border md:block" aria-hidden />
+        <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground md:block">
+          {activeScope?.group ?? "Region"}
+        </span>
+
         <div className="ml-auto flex items-center gap-3">
           <DwdStatusTile
             locationName={region?.name ?? null}
@@ -613,7 +694,64 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             lat={region?.center?.[0] ?? null}
             lon={region?.center?.[1] ?? null}
           />
-          
+
+          <ScopePicker
+            scopes={scopes}
+            groups={scopeGroups}
+            activeScope={activeScope}
+            pending={scopePending}
+            error={scopeError}
+            onSelect={handleScopeSelect}
+          />
+
+          <span
+            className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
+            title="Data source: live backend pipeline vs. bundled demo dataset"
+          >
+            <span className="relative flex h-2 w-2">
+              {modeMeta.ping && (
+                <span
+                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${modeMeta.dot}`}
+                />
+              )}
+              <span
+                className={`relative inline-flex h-2 w-2 rounded-full ${modeMeta.dot}`}
+              />
+            </span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+              {modeMeta.label}
+            </span>
+          </span>
+
+          <span
+            className="hidden rounded-full border border-border bg-muted px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground md:block"
+            title="LLM analyst mode (LiteLLM gateway, Qwen3-VL)"
+          >
+            AI {health?.ai_mode ?? "mock"}
+          </span>
+
+          {mode === "live" && streaming?.enabled && (
+            <span
+              className="hidden items-center gap-2 rounded-full border border-gold/40 bg-gold-fill/10 px-3 py-1 xl:flex"
+              title="Real-time social-media streams (Mastodon WebSocket · Bluesky Jetstream)"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gold-fill opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-gold-fill" />
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-gold">
+                Streaming · {streaming.posts_per_min}/min
+              </span>
+            </span>
+          )}
+
+          <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
+            Last analysis{" "}
+            <span className="text-foreground" suppressHydrationWarning>
+              {lastAnalysis ? lastAnalysis.toLocaleTimeString("de-DE") : "—"}
+            </span>
+          </span>
+
           {selected && (
             <button
               type="button"
@@ -697,6 +835,53 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           aria-hidden={Boolean(selected) || !feedOpen}
         >
           <div className="flex h-full w-[300px] flex-col border-r border-border bg-background">
+            {/* Real-time incoming-posts ticker (streaming mode only) */}
+            {mode === "live" && streaming?.enabled && (
+              <div className="shrink-0 border-b border-border">
+                <div className="flex items-center gap-2.5 px-5 py-3">
+                  <Rss className="h-4 w-4 text-gold" />
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
+                    Incoming Posts
+                  </h2>
+                  <span className="ml-auto rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                    {streaming.posts_per_min}/min
+                  </span>
+                </div>
+                <ul className="cl-scroll max-h-52 space-y-1.5 overflow-y-auto px-3 pb-3">
+                  {(streamPosts?.length ?? 0) === 0 ? (
+                    <li className="px-2 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                      Listening to live streams —{" "}
+                      {streaming.connections
+                        .map((c) => `${c.name.split(":")[0]}: ${c.state}`)
+                        .join(" · ") || "starting…"}
+                    </li>
+                  ) : (
+                    streamPosts?.map((post) => {
+                      const isNew = !seenPostIds.current.has(post.id);
+                      return (
+                        <li
+                          key={post.id}
+                          className={`rounded-md border border-border bg-card px-2.5 py-2 ${isNew ? "cl-rise" : ""}`}
+                        >
+                          <span className="flex items-center gap-2">
+                            <VerdictChip verdict={post.verdict} />
+                            <span className="truncate text-[11px] font-semibold text-foreground">
+                              {post.author}
+                            </span>
+                            <span className="ml-auto shrink-0 font-mono text-[9px] text-muted-foreground">
+                              {timeAgo(post.timestamp)}
+                            </span>
+                          </span>
+                          <span className="mt-1 line-clamp-2 block text-[11px] leading-snug text-muted-foreground">
+                            {post.text}
+                          </span>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              </div>
+            )}
             {popularSummary && (
               <div className="border-b border-border p-3 bg-muted/10 shrink-0">
                 <div className="px-2 pb-1.5 flex items-center justify-between">
@@ -864,6 +1049,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onHoverMeasure={setHoveredMeasureId}
             onMoveMeasure={(id, position) => updateMeasure(id, { position })}
             onResizeZone={(id, radiusM) => updateMeasure(id, { radiusM })}
+            scope={activeScope}
           />
 
           {/* Measure palette — the editable tactical layer (Command Mode). */}

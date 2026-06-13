@@ -1,0 +1,5 @@
+{
+  "stream": ["hashtag", "konstanz"],
+  "event": "update",
+  "payload": "{\"id\":\"998877\",\"uri\":\"https://mastodon.example/users/kn_melder/statuses/998877\",\"created_at\":\"2026-06-12T14:05:00.000Z\",\"language\":\"de\",\"url\":\"https://mastodon.example/@kn_melder/998877\",\"content\":\"<p>Stromausfall in Petershausen-Ost, Ampeln an der Mainaustraße dunkel #konstanz</p>\",\"account\":{\"acct\":\"kn_melder\"},\"media_attachments\":[]}"
+}

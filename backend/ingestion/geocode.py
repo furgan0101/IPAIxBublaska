@@ -66,6 +66,17 @@ class Geocoder:
         self._store = store
         self._lock = asyncio.Lock()
         self._last_request: float = 0.0
+        # Scope bias (defaults = Konstanz demo sector; see Geocoder.set_scope).
+        self._countrycodes: str = "de,ch"
+        self._viewbox: str = SECTOR_VIEWBOX
+        self._bounded: bool = True
+
+    def set_scope(self, countrycodes: str, viewbox: str, *, bounded: bool) -> None:
+        """Re-bias Nominatim to the active search scope. Large scopes use
+        bounded=False (viewbox as preference, not a hard wall)."""
+        self._countrycodes = countrycodes
+        self._viewbox = viewbox
+        self._bounded = bounded
 
     async def resolve(
         self,
@@ -94,7 +105,14 @@ class Geocoder:
     async def _cached_nominatim(
         self, client: httpx.AsyncClient, candidate: str, bounded: bool = True
     ) -> tuple[float, float] | None:
-        cache_key = candidate.lower() + ("_bounded" if bounded else "_unbounded")
+        # Namespace the cache by full scope bias so a miss/hit from one region
+        # cannot be reused after switching to another region with the same
+        # country code. The per-call `bounded` flag is part of the key too: a
+        # bounded miss must not satisfy a later unbounded lookup.
+        cache_key = (
+            f"{self._countrycodes}:{self._viewbox}:{int(self._bounded)}:"
+            f"{int(bounded)}:{candidate.lower()}"
+        )
         if self._store.geocode_has(cache_key):
             return self._store.geocode_get(cache_key)  # None == known miss
         coords = await self._query_nominatim(client, candidate, bounded)
@@ -113,11 +131,13 @@ class Geocoder:
                 "q": place,
                 "format": "jsonv2",
                 "limit": "1",
-                "countrycodes": "de,ch",
+                "countrycodes": self._countrycodes,
+                "viewbox": self._viewbox,
             }
-            if bounded:
-                params["viewbox"] = SECTOR_VIEWBOX
-                params["bounded"] = "1"
+            # Hard-bound the query only when the caller asks for it AND the
+            # active scope is itself bounded; large scopes use the viewbox as a
+            # soft preference (bounded=False) instead of a wall.
+            params["bounded"] = "1" if (bounded and self._bounded) else "0"
             try:
                 response = await client.get(
                     NOMINATIM_URL,

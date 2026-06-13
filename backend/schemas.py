@@ -203,6 +203,12 @@ class ReportSubmission(BaseModel):
     media_url: str | None = None
 
 
+class ScopeSelection(BaseModel):
+    """Request body for POST /api/scope (a preset id from GET /api/scopes)."""
+
+    id: str
+
+
 class SubmissionResult(BaseModel):
     """What the pipeline decided about a freshly submitted report."""
 

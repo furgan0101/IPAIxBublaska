@@ -36,6 +36,24 @@ DEFAULT_MASTODON_TAGS: tuple[str, ...] = (
     "unwetter",
 )
 
+# Bluesky Jetstream firehose (keyless). Empty BLUESKY_JETSTREAM_URL disables it.
+DEFAULT_BLUESKY_JETSTREAM_URL: str = (
+    "wss://jetstream2.us-east.bsky.network/subscribe"
+    "?wantedCollections=app.bsky.feed.post"
+)
+
+# Sector terms a firehose post must mention to be considered at all (cheap
+# pre-filter long before any LLM is involved).
+DEFAULT_BLUESKY_KEYWORDS: tuple[str, ...] = (
+    "konstanz",
+    "bodensee",
+    "kreuzlingen",
+    "radolfzell",
+    "singen",
+    "reichenau",
+    "allensbach",
+)
+
 
 def _flag(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
@@ -82,6 +100,14 @@ class IngestionSettings:
     usgs_enabled: bool = False
     eonet_enabled: bool = False
     gdacs_enabled: bool = False
+    # --- real-time streaming (defaults keep existing tests/config valid) ---
+    streaming_enabled: bool = False
+    mastodon_stream_instances: tuple[str, ...] = ()
+    bluesky_jetstream_url: str = ""
+    bluesky_keywords: tuple[str, ...] = ()
+    max_stream_analyses_per_min: int = 10
+    stream_fallback_poll_s: float = 25.0
+    search_scope: str = "konstanz-sector"
 
     @classmethod
     def from_env(cls) -> "IngestionSettings":
@@ -89,6 +115,9 @@ class IngestionSettings:
         db_path = Path(db_raw)
         if not db_path.is_absolute():
             db_path = BACKEND_DIR / db_path
+        mastodon_instance = os.getenv(
+            "MASTODON_INSTANCE", "https://mastodon.social"
+        ).rstrip("/")
         return cls(
             enabled=_flag("FEEDS_ENABLED", default=False),
             poll_interval_s=max(30.0, _number("FEEDS_POLL_INTERVAL_S", 120.0)),
@@ -101,9 +130,7 @@ class IngestionSettings:
             presseportal_feeds=_csv(
                 "PRESSEPORTAL_FEEDS", DEFAULT_PRESSEPORTAL_FEEDS
             ),
-            mastodon_instance=os.getenv(
-                "MASTODON_INSTANCE", "https://mastodon.social"
-            ).rstrip("/"),
+            mastodon_instance=mastodon_instance,
             mastodon_tags=_csv("MASTODON_TAGS", DEFAULT_MASTODON_TAGS),
             nominatim_enabled=_flag("NOMINATIM_ENABLED", default=True),
             request_timeout_s=max(3.0, _number("FEEDS_TIMEOUT_S", 15.0)),
@@ -115,4 +142,23 @@ class IngestionSettings:
             usgs_enabled=_flag("USGS_ENABLED", default=False),
             eonet_enabled=_flag("EONET_ENABLED", default=False),
             gdacs_enabled=_flag("GDACS_ENABLED", default=False),
+            streaming_enabled=_flag("FEEDS_STREAMING", default=False),
+            mastodon_stream_instances=_csv(
+                "MASTODON_STREAM_INSTANCES", (mastodon_instance,)
+            ),
+            bluesky_jetstream_url=os.getenv(
+                "BLUESKY_JETSTREAM_URL", DEFAULT_BLUESKY_JETSTREAM_URL
+            ).strip(),
+            bluesky_keywords=tuple(
+                keyword.lower()
+                for keyword in _csv("BLUESKY_KEYWORDS", DEFAULT_BLUESKY_KEYWORDS)
+            ),
+            max_stream_analyses_per_min=int(
+                _number("MAX_STREAM_ANALYSES_PER_MIN", 10.0)
+            ),
+            stream_fallback_poll_s=max(
+                10.0, _number("MASTODON_STREAM_FALLBACK_POLL_S", 25.0)
+            ),
+            search_scope=os.getenv("SEARCH_SCOPE", "konstanz-sector").strip()
+            or "konstanz-sector",
         )

@@ -19,12 +19,15 @@ import asyncio
 import hashlib
 import logging
 import re
+import time
+from collections import deque
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from functools import partial
 from typing import Any, Callable, Sequence
 
 import httpx
-from geopy.distance import geodesic
 
 from ingestion.base import Connector, FetchedItem
 from ingestion.classify import classify
@@ -38,7 +41,16 @@ from ingestion.pegelonline import PegelonlineConnector
 from ingestion.usgs import UsgsConnector
 from ingestion.eonet import EonetConnector
 from ingestion.gdacs import GdacsConnector
+from ingestion.scopes import GROUP_REGIONS, SCOPES, Scope
 from ingestion.storage import DispatchState, FeedStore, StoredReport, content_hash
+from ingestion.streaming import (
+    StreamRateLimiter,
+    StreamStatus,
+    run_bluesky_socket,
+    run_mastodon_fallback_poll,
+    run_mastodon_socket,
+    supervise,
+)
 from logic.geospatial import cluster_reports
 from logic.guidance import action_hint
 from logic.relations import find_relations
@@ -56,12 +68,20 @@ ID_PREFIXES: dict[str, str] = {
     "nina": "NINA",
     "presseportal": "POL",
     "mastodon": "MSTDN",
+    "bluesky": "BSKY",
     "dwd": "DWD",
     "pegelonline": "PEGEL",
     "usgs": "USGS",
     "eonet": "EONET",
     "gdacs": "GDACS",
 }
+
+#: Coalesce stream-triggered snapshot rebuilds: a burst publishes at most
+#: once per this window.
+STREAM_PUBLISH_DEBOUNCE_S: float = 2.0
+
+#: Ring buffer size for the dashboard's "incoming posts" ticker.
+STREAM_RECENT_LIMIT: int = 50
 
 #: Official channels lift the cluster confidence to at least this floor —
 #: a federal warning or police release IS the corroboration.
@@ -144,6 +164,30 @@ class IngestionService:
         self._poll_lock = asyncio.Lock()
         self._last_poll_utc: str | None = None
         self._last_stats: dict[str, int] = {}
+        # Dedup caches shared by the poll loop and the stream consumer
+        # (loaded once from SQLite, kept in sync on every insert).
+        self._known_keys: set[str] | None = None
+        self._known_hashes: set[str] | None = None
+        # Stream-only negative cache: keys already dropped (not crisis/off
+        # sector/...) so re-enqueued fallback-poll posts short-circuit.
+        self._stream_dropped: set[str] = set()
+        # --- real-time streaming state -------------------------------------
+        self._stream_queue: asyncio.Queue[FetchedItem] = asyncio.Queue(maxsize=500)
+        self._stream_tasks: list[asyncio.Task[None]] = []
+        self._stream_status: dict[str, StreamStatus] = {}
+        self._stream_recent: deque[dict[str, Any]] = deque(maxlen=STREAM_RECENT_LIMIT)
+        self._stream_rate = StreamRateLimiter(settings.max_stream_analyses_per_min)
+        self._stream_counters: dict[str, int] = {
+            "accepted": 0,
+            "filtered": 0,
+            "duplicates": 0,
+            "rate_deferred": 0,
+        }
+        self._accept_times: deque[float] = deque(maxlen=600)
+        self._publish_event = asyncio.Event()
+        # Active search scope (runtime-switchable via POST /api/scope).
+        self._scope: Scope = self._initial_scope(settings)
+        self._apply_scope_to_geocoder()
 
     # -- lifecycle ----------------------------------------------------------------
 
@@ -152,6 +196,7 @@ class IngestionService:
         dashboard has data immediately while the first poll happens."""
         await asyncio.to_thread(self._store.init)
         await self._rebuild_and_publish()
+        self._start_streams()
 
     async def run(self) -> None:
         """Poll forever; one failed cycle must never kill the loop."""
@@ -165,7 +210,17 @@ class IngestionService:
                 logger.exception("Poll cycle failed")
             await asyncio.sleep(self._settings.poll_interval_s)
 
+    async def _stop_streams(self) -> None:
+        for task in self._stream_tasks:
+            task.cancel()
+        for task in self._stream_tasks:
+            with suppress(asyncio.CancelledError):
+                await task
+        self._stream_tasks.clear()
+        self._stream_status.clear()
+
     async def aclose(self) -> None:
+        await self._stop_streams()
         if self._client is not None:
             await self._client.aclose()
             self._client = None
@@ -196,8 +251,10 @@ class IngestionService:
                 "off_sector": 0,
                 "stale": 0,
             }
-            known_keys = await asyncio.to_thread(self._store.known_keys)
-            known_hashes = await asyncio.to_thread(self._store.known_hashes)
+            await self._ensure_seen_loaded()
+            known_keys = self._known_keys
+            known_hashes = self._known_hashes
+            assert known_keys is not None and known_hashes is not None
             now = datetime.now(timezone.utc)
 
             for item in fetched:
@@ -241,10 +298,240 @@ class IngestionService:
             self._last_stats = stats
             return stats
 
+    async def _ensure_seen_loaded(self) -> None:
+        if self._known_keys is None:
+            self._known_keys = await asyncio.to_thread(self._store.known_keys)
+            self._known_hashes = await asyncio.to_thread(self._store.known_hashes)
+
+    # -- search scope -------------------------------------------------------------------
+
+    @staticmethod
+    def _initial_scope(settings: IngestionSettings) -> Scope:
+        """Preset from SEARCH_SCOPE, or the env-tunable Konstanz default."""
+        if settings.search_scope != "konstanz-sector":
+            preset = SCOPES.get(settings.search_scope)
+            if preset is not None:
+                return preset
+            logger.warning(
+                "Unknown SEARCH_SCOPE %r — falling back to konstanz-sector",
+                settings.search_scope,
+            )
+        spread = 0.5  # purely informational bbox around the radius scope
+        return Scope(
+            id="konstanz-sector",
+            label="Konstanz Sector",
+            group=GROUP_REGIONS,
+            mode="radius",
+            bbox=(
+                settings.sector_lat - spread,
+                settings.sector_lon - spread * 1.5,
+                settings.sector_lat + spread,
+                settings.sector_lon + spread * 1.5,
+            ),
+            countrycodes="de,ch,at",
+            languages=("de", "en"),
+            keywords=settings.bluesky_keywords,
+            radius_km=settings.sector_radius_km,
+            tags=settings.mastodon_tags,
+            center_override=(settings.sector_lat, settings.sector_lon),
+        )
+
+    def _apply_scope_to_geocoder(self) -> None:
+        """Konstanz keeps the hard-bounded local viewbox; large scopes use the
+        viewbox as a preference only (countrycodes do the constraining)."""
+        self._geocoder.set_scope(
+            self._scope.countrycodes,
+            self._scope.viewbox(),
+            bounded=self._scope.mode == "radius",
+        )
+
+    async def set_scope(self, scope: Scope) -> None:
+        """Switch the search region at runtime: stop streams, re-bias the
+        geocoder + social filters, wipe the store, restart streams fresh."""
+        async with self._poll_lock:
+            logger.info("Search scope -> %s (%s)", scope.id, scope.label)
+            if scope.mode == "bbox" and (scope.bbox[2] - scope.bbox[0]) > 8.0:
+                logger.info(
+                    "Large scope selected — analysis caps remain enforced "
+                    "(MAX_STREAM_ANALYSES_PER_MIN + LLM_MAX_CALLS)"
+                )
+            await self._stop_streams()
+            self._scope = scope
+            self._apply_scope_to_geocoder()
+            for connector in self._connectors:
+                if isinstance(connector, MastodonConnector):
+                    connector.set_tags(scope.hashtags())
+            await asyncio.to_thread(self._store.clear)
+            await asyncio.to_thread(self._store.clear_dispatched)
+            self._known_keys = set()
+            self._known_hashes = set()
+            self._stream_dropped.clear()
+            self._stream_recent.clear()
+            self._stream_rate = StreamRateLimiter(
+                self._settings.max_stream_analyses_per_min
+            )
+            for counter in self._stream_counters:
+                self._stream_counters[counter] = 0
+            self._publish([], [], [])
+            self._start_streams()
+
+    def scope_info(self) -> dict[str, Any]:
+        return self._scope.as_dict()
+
+    # -- real-time streaming -----------------------------------------------------------
+
+    def _start_streams(self) -> None:
+        """Spawn one supervised task per stream source + consumer + publisher."""
+        if not self._settings.streaming_enabled:
+            return
+        scope_tags = self._scope.hashtags()
+        for instance in self._settings.mastodon_stream_instances:
+            host = instance.removeprefix("https://").removeprefix("http://")
+            status = StreamStatus(name=f"mastodon:{host}")
+            self._stream_status[status.name] = status
+            runner = partial(
+                run_mastodon_socket,
+                instance,
+                scope_tags,
+                self._stream_queue,
+                status,
+            )
+            fallback = partial(
+                run_mastodon_fallback_poll,
+                instance,
+                scope_tags,
+                self._stream_queue,
+                status,
+                self._settings.stream_fallback_poll_s,
+                self._settings.request_timeout_s,
+                self._settings.user_agent,
+            )
+            self._stream_tasks.append(
+                asyncio.create_task(
+                    supervise(status.name, status, runner, on_auth_rejected=fallback)
+                )
+            )
+        if self._settings.bluesky_jetstream_url:
+            status = StreamStatus(name="bluesky-jetstream")
+            self._stream_status[status.name] = status
+            runner = partial(
+                run_bluesky_socket,
+                self._settings.bluesky_jetstream_url,
+                self._scope.keywords,
+                self._stream_queue,
+                status,
+                self._scope.languages,
+            )
+            self._stream_tasks.append(
+                asyncio.create_task(supervise(status.name, status, runner))
+            )
+        self._stream_tasks.append(asyncio.create_task(self._consume_streams()))
+        self._stream_tasks.append(asyncio.create_task(self._stream_publisher()))
+        logger.info(
+            "Real-time streaming enabled: %d source(s)", len(self._stream_status)
+        )
+
+    async def _consume_streams(self) -> None:
+        """Single consumer: streamed items go through the SAME pipeline as polls."""
+        while True:
+            item = await self._stream_queue.get()
+            try:
+                await self._ingest_stream_item(item)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — one bad item never kills the consumer
+                logger.exception("Stream item failed: %s:%s", item.source, item.source_id)
+
+    async def _ingest_stream_item(self, item: FetchedItem) -> None:
+        """normalise -> dedup -> assess -> store for ONE streamed post, with a
+        two-phase ticker entry ('analyzing' -> verdict) and a throughput cap."""
+        async with self._poll_lock:  # serialize against poll cycles
+            now = datetime.now(timezone.utc)
+            await self._ensure_seen_loaded()
+            assert self._known_keys is not None and self._known_hashes is not None
+            key = f"{item.source}:{item.source_id}"
+            if key in self._known_keys or key in self._stream_dropped:
+                self._stream_counters["duplicates"] += 1
+                return
+            # Cheap filters FIRST (classify/geocode/sector) — the analysis rate
+            # cap must only gate posts that would actually be analyzed.
+            report, _drop_reason = await self._normalise(item, key, now)
+            if report is None:
+                self._stream_dropped.add(key)
+                self._stream_counters["filtered"] += 1
+                return
+            chash = content_hash(report.text)
+            if chash in self._known_hashes:
+                self._stream_dropped.add(key)
+                self._stream_counters["duplicates"] += 1
+                return
+            if not self._stream_rate.allow(time.monotonic()):
+                # Deferred, not lost: the regular poll picks tag posts up later.
+                self._stream_counters["rate_deferred"] += 1
+                logger.info("Stream analysis cap hit — deferring %s", key)
+                return
+            self._known_keys.add(key)
+            self._known_hashes.add(chash)
+
+            entry: dict[str, Any] = {
+                "id": report.id,
+                "source": report.source,
+                "author": report.author,
+                "text": report.text[:240],
+                "timestamp": report.timestamp.isoformat(),
+                "url": report.url,
+                "verdict": "analyzing",
+                "credibility_score": None,
+                "event_type": report.event_type,
+                "reason": None,
+            }
+            self._stream_recent.append(entry)
+
+            assessment = await asyncio.to_thread(assess_report, report)
+            report = annotate_report(report, assessment)
+            entry["verdict"] = "verified" if assessment.credible else "debunked"
+            entry["credibility_score"] = assessment.score
+            entry["event_type"] = report.event_type
+            entry["reason"] = assessment.reason
+
+            await asyncio.to_thread(
+                self._store.add_report,
+                key,
+                chash,
+                report,
+                assessment.credible,
+                assessment.reason,
+                assessment.score,
+                now,
+            )
+            self._stream_counters["accepted"] += 1
+            self._accept_times.append(time.monotonic())
+            self._publish_event.set()
+
+    async def _stream_publisher(self) -> None:
+        """Debounced snapshot rebuild: a burst publishes at most every ~2 s."""
+        while True:
+            await self._publish_event.wait()
+            await asyncio.sleep(STREAM_PUBLISH_DEBOUNCE_S)
+            self._publish_event.clear()
+            await self._rebuild_and_publish()
+
+    def _posts_per_min(self) -> int:
+        cutoff = time.monotonic() - 60.0
+        while self._accept_times and self._accept_times[0] < cutoff:
+            self._accept_times.popleft()
+        return len(self._accept_times)
+
+    def recent_stream_posts(self) -> list[dict[str, Any]]:
+        """Newest-first ticker entries for GET /api/stream/recent."""
+        return list(reversed(self._stream_recent))
+
     async def _fetch_all(self, query: str | None = None) -> list[FetchedItem]:
         if query:
             # Special case: ad-hoc scrape for a specific city name on Mastodon.
-            mastodon = next((c for c in self._connectors if isinstance(c, MastodonConnector)), None)
+            mastodon = next(
+                (c for c in self._connectors if isinstance(c, MastodonConnector)), None
+            )
             if mastodon:
                 logger.info("Triggering ad-hoc Mastodon scrape for: %s", query)
                 return await mastodon.fetch_tags(self.client(), [query])
@@ -284,7 +571,6 @@ class IngestionService:
         if event_type is None:
             return None, "not_crisis"
 
-        had_explicit_coords = item.lat is not None and item.lon is not None
         lat, lon = item.lat, item.lon
         if lat is None or lon is None:
             place_hint = item.place_hint
@@ -296,18 +582,14 @@ class IngestionService:
             )
             if coords is None and item.source == "nina":
                 # District-wide official warning without geometry: it applies
-                # to the whole polled region, so pin it at the sector centre.
-                coords = (self._settings.sector_lat, self._settings.sector_lon)
+                # to the whole polled region, so pin it at the scope centre.
+                coords = self._scope.center
             if coords is None:
                 return None, "unlocated"
             lat, lon = coords
 
-        if had_explicit_coords:
-            distance_km = geodesic(
-                (lat, lon), (self._settings.sector_lat, self._settings.sector_lon)
-            ).kilometers
-            if distance_km > self._settings.sector_radius_km:
-                return None, "off_sector"
+        if not self._scope.contains(float(lat), float(lon)):
+            return None, "off_sector"
 
         digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:8].upper()
         prefix = ID_PREFIXES.get(item.source, "LIVE")
@@ -341,13 +623,13 @@ class IngestionService:
         cutoff = now - timedelta(hours=self._settings.retention_hours)
         await asyncio.to_thread(self._store.purge_before, cutoff - timedelta(days=7))
         stored = await asyncio.to_thread(self._store.load_recent, cutoff)
-        
+
         credible = [entry.report for entry in stored if entry.credible]
         incidents = self._with_source_trust(cluster_reports(credible))
-        
+
         # Link incidents (LLM pass)
         linked_incidents: list[VerifiedIncident] = []
-        for i, incident in enumerate(incidents):
+        for incident in incidents:
             # Compare against all previously processed incidents in this batch
             relations = await find_relations(incident, linked_incidents)
             if relations:
@@ -422,6 +704,13 @@ class IngestionService:
         """Demo reset in live mode: wipe the store and re-poll immediately."""
         await asyncio.to_thread(self._store.clear)
         await asyncio.to_thread(self._store.clear_dispatched)
+        self._known_keys = set()
+        self._known_hashes = set()
+        self._stream_dropped.clear()
+        self._stream_recent.clear()
+        self._stream_rate = StreamRateLimiter(self._settings.max_stream_analyses_per_min)
+        for counter in self._stream_counters:
+            self._stream_counters[counter] = 0
         self._publish([], [], [])
         return await self.poll_once()
 
@@ -431,10 +720,20 @@ class IngestionService:
             "poll_interval_s": self._settings.poll_interval_s,
             "retention_hours": self._settings.retention_hours,
             "sector_radius_km": self._settings.sector_radius_km,
+            "scope": self.scope_info(),
             "last_stats": self._last_stats,
             "connectors": [
                 health.as_dict() for health in self._health.values()
             ],
+            "streaming": {
+                "enabled": self._settings.streaming_enabled,
+                "posts_per_min": self._posts_per_min(),
+                "queue_depth": self._stream_queue.qsize(),
+                **self._stream_counters,
+                "connections": [
+                    status.as_dict() for status in self._stream_status.values()
+                ],
+            },
         }
 
 

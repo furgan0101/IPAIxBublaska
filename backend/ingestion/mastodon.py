@@ -29,6 +29,10 @@ class MastodonConnector:
         self._instance = settings.mastodon_instance
         self._tags = settings.mastodon_tags
 
+    def set_tags(self, tags: tuple[str, ...]) -> None:
+        """Re-target the polled hashtags (used when the search scope changes)."""
+        self._tags = tags
+
     async def fetch(self, client: httpx.AsyncClient) -> list[FetchedItem]:
         return await self.fetch_tags(client, self._tags)
 
@@ -102,3 +106,8 @@ def _extract_media(status: dict[str, Any]) -> tuple[MediaItem, ...]:
                 MediaItem(url=str(card_image), type="image", preview_url=str(card_image))
             )
     return tuple(items)
+
+
+#: Public alias used by the streaming layer (WebSocket frames carry the same
+#: status JSON the REST timeline returns).
+status_to_item = _to_item
