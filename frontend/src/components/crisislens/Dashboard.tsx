@@ -2,14 +2,14 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, BarChart3, PanelLeftClose, PanelLeftOpen, RotateCcw, Search } from "lucide-react";
+import { Activity, BarChart3, PanelLeftClose, PanelLeftOpen, RotateCcw } from "lucide-react";
 
 import {
   MOCK_REPORTS,
-  STATUS_META,
   type CrisisReport,
   type RiskLevel,
 } from "@/lib/mockReports";
+import { trustMeta } from "@/lib/trust";
 import { adaptAll } from "@/lib/liveAdapter";
 import { firstSignalAt } from "@/lib/mediaResponse";
 import {
@@ -24,6 +24,7 @@ import { safeNewDate, timeAgo } from "@/lib/format";
 import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
+import DwdStatusTile from "./DwdStatusTile";
 import DetailPanel from "./DetailPanel";
 import TagFilter from "./TagFilter";
 import FilterToolbar from "./FilterToolbar";
@@ -43,36 +44,24 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ),
 });
 
-type DataMode = "live" | "mock" | "offline";
-
-const MODE_META: Record<
-  DataMode,
-  { label: string; chip: string; dot: string; ping: boolean }
-> = {
-  live: {
-    label: "Live Data",
-    chip: "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    dot: "bg-emerald-500",
-    ping: true,
-  },
-  mock: {
-    label: "Mock Data",
-    chip: "border-gold/40 bg-gold-fill/10 text-gold",
-    dot: "bg-gold-fill",
-    ping: false,
-  },
-  offline: {
-    label: "Offline Demo",
-    chip: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
-    dot: "bg-red-500",
-    ping: false,
-  },
-};
-
 interface DashboardProps {
   theme: "dark" | "light";
   onToggleTheme: () => void;
 }
+
+/** A jurisdiction the map is centred on; its name scopes the news feed. */
+interface RegionFocus {
+  name: string;
+  center: [number, number];
+}
+
+// Demo default: the dashboard boots straight into the operator's jurisdiction
+// (Mannheim) with the industrial-fire scenario front and centre — no gate,
+// no modal. The wider Baden-Württemberg map stays fully populated underneath.
+const DEFAULT_REGION: RegionFocus = {
+  name: "Mannheim",
+  center: [49.452, 8.518],
+};
 
 /** Main command-center view: map, stats, signal feed and report dossier. */
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
@@ -81,29 +70,26 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [minConfidence, setMinConfidence] = useState(1);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [manualFocus, setManualFocus] = useState<MapFocus | null>(null);
+  const [region, setRegion] = useState<RegionFocus | null>(DEFAULT_REGION);
   const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
-  const { incidents, debunked, health, online } = useDashboard();
+  const { incidents, debunked, online } = useDashboard();
 
-  const mode: DataMode = !online
-    ? "offline"
-    : health?.data_mode === "live"
-      ? "live"
-      : "mock";
+  // Whenever the backend is reachable, show its real pipeline output —
+  // mock_data.json verified, clustered and debunked through the same code
+  // path as live feeds. Only fall back to the bundled curated set when the
+  // API is unreachable, so the dashboard still has something to show
+  // (offline judging!).
+  const allReports: CrisisReport[] = useMemo(() => {
+    const backendReports = (incidents?.length ?? 0) + (debunked?.length ?? 0);
+    return online && backendReports > 0
+      ? adaptAll(incidents ?? [], debunked ?? [])
+      : MOCK_REPORTS;
+  }, [online, incidents, debunked]);
 
-  // Real pipeline output in live mode; the curated mock set otherwise — the
-  // dashboard always has something meaningful to show (offline judging!).
-  const allReports: CrisisReport[] = useMemo(
-    () =>
-      mode === "live"
-        ? adaptAll(incidents ?? [], debunked ?? [])
-        : MOCK_REPORTS,
-    [mode, incidents, debunked],
-  );
-
+  // Map markers honour the header filters (event type + confidence) but NOT
+  // the selected region — the whole Baden-Württemberg picture stays visible.
   const reports = useMemo(
     () => {
       let filtered = allReports;
@@ -116,84 +102,56 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         const threshold = (minConfidence - 1) * 25;
         filtered = filtered.filter((r) => r.confidence >= threshold);
       }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(
-          (r) =>
-            r.city.toLowerCase().includes(q) ||
-            r.crisisType.toLowerCase().includes(q) ||
-            r.signalSnippet.toLowerCase().includes(q) ||
-            r.signalSource.toLowerCase().includes(q),
-        );
-      }
       return filtered;
     },
-    [allReports, activeTag, minConfidence, searchQuery],
+    [allReports, activeTag, minConfidence],
+  );
+
+  // All reports in the selected jurisdiction, before the header filters. The
+  // chips are built from this so every tag shown has at least one incident in
+  // the current region — clicking a tag never yields an empty feed.
+  const regionBase = useMemo(
+    () =>
+      region ? allReports.filter((r) => r.city === region.name) : allReports,
+    [allReports, region],
   );
 
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    allReports.forEach((r) => {
+    regionBase.forEach((r) => {
       counts[r.crisisType] = (counts[r.crisisType] ?? 0) + 1;
     });
     return Object.entries(counts)
       .map(([tag, count]) => ({ tag, count }))
       .sort((a, b) => b.count - a.count);
-  }, [allReports]);
+  }, [regionBase]);
 
   const selected = useMemo(
     () => reports.find((r) => r.id === selectedId) ?? null,
     [reports, selectedId],
   );
 
-  // Command Mode scopes the entire dashboard — stats, feed, map — to one city.
+  // The map always plots the full board; the selected region only scopes the
+  // feed (and the Command-Mode tooling, which keys off focusCity).
   const scopedReports = useMemo(
     () =>
       focusCity ? reports.filter((r) => r.city === focusCity) : reports,
     [reports, focusCity],
   );
 
-  // Leave Command Mode automatically if the city drops off the board
-  // (live feeds can age incidents out between polls).
-  useEffect(() => {
-    if (focusCity && !reports.some((r) => r.city === focusCity)) {
-      setFocusCity(null);
-    }
-  }, [focusCity, reports]);
+  // The news feed is scoped to the selected jurisdiction (e.g. Mannheim).
+  const regionReports = useMemo(
+    () =>
+      region ? reports.filter((r) => r.city === region.name) : reports,
+    [reports, region],
+  );
 
-  const cityFocus = useMemo<MapFocus | null>(() => {
-    // 1. Manual map jump (from search)
-    if (manualFocus) return manualFocus;
-
-    // 2. Manual city focus (Command Mode)
-    if (focusCity && scopedReports.length > 0) {
-      const lat =
-        scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
-        scopedReports.length;
-      const lon =
-        scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
-        scopedReports.length;
-      return { center: [lat, lon], zoom: 12 };
-    }
-
-    // 3. Search results zoom
-    // If the user has typed something that filters the list, fly to the center of results.
-    const isSearching = searchQuery.trim().length >= 2;
-    if (isSearching && reports.length > 0) {
-      const lat =
-        reports.reduce((sum, r) => sum + r.coordinates[0], 0) / reports.length;
-      const lon =
-        reports.reduce((sum, r) => sum + r.coordinates[1], 0) / reports.length;
-
-      // If results are few or all in one city, zoom deep. Otherwise, overview.
-      const uniqueCities = new Set(reports.map((r) => r.city));
-      const zoom = (reports.length <= 3 || uniqueCities.size === 1) ? 14 : 10;
-
-      return { center: [lat, lon], zoom };
-    }
-
-    return null;
-  }, [focusCity, scopedReports, reports, searchQuery, manualFocus]);
+  // Centre the map on the selected region; a selected incident overrides this
+  // inside MapController.
+  const cityFocus = useMemo<MapFocus | null>(
+    () => (region ? { center: region.center, zoom: 11 } : null),
+    [region],
+  );
 
   const firstSignal = useMemo(
     () => (focusCity ? firstSignalAt(scopedReports) : null),
@@ -310,14 +268,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   const feed = useMemo(
     () =>
-      [...scopedReports].sort(
-        (a, b) =>
-          safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
-      ),
-    [scopedReports],
+      [...regionReports]
+        .sort(
+          (a, b) =>
+            safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
+        )
+        .slice(0, 100),
+    [regionReports],
   );
-
-  const modeMeta = MODE_META[mode];
 
   return (
     <div className="cl-fade-in flex h-screen flex-col overflow-hidden bg-background">
@@ -337,6 +295,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <DwdStatusTile />
+          
           {selected && (
             <button
               type="button"
@@ -366,6 +326,16 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         setActiveTag={setActiveTag}
         minConfidence={minConfidence}
         setMinConfidence={setMinConfidence}
+        regionName={region?.name ?? null}
+        onSelectCity={(hit) => {
+          setSelectedId(null);
+          setActiveTag(null); // a tag from the previous region may not exist here
+          setRegion({ name: hit.name, center: hit.center });
+        }}
+        onClearRegion={() => {
+          setActiveTag(null);
+          setRegion(null);
+        }}
       />
 
       {/* -------------------------------------------- command mode banner */}
@@ -404,14 +374,12 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             </div>
             {feed.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
-                No signals in the current window yet — the pipeline is polling
-                live sources. Trigger a cycle via{" "}
-                <span className="font-mono">POST /api/poll</span>.
+                No current news{region ? ` for ${region.name}` : ""}.
               </p>
             ) : (
               <ul className="space-y-2">
                 {feed.map((report) => {
-                  const meta = STATUS_META[report.status];
+                  const meta = trustMeta(report.confidence);
                   const isSelected = report.id === selectedId;
                   return (
                     <li key={report.id}>
@@ -490,96 +458,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           {focusCity && !selected && (
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
-
-          {/* Map tint overlay — visible only before the user picks a location */}
-          <div
-            className={`pointer-events-none absolute inset-0 z-[999] bg-black transition-opacity duration-500 ${
-              manualFocus || searchQuery ? "opacity-0" : "opacity-50"
-            }`}
-            aria-hidden
-          />
-
-          {/* Floating Search Bar — centred until the user picks a location */}
-          <div
-            className={`pointer-events-none absolute left-1/2 z-[1000] -translate-x-1/2 px-4 transition-all duration-500 ease-in-out ${
-              manualFocus || searchQuery
-                ? "bottom-6 top-auto -translate-y-0"
-                : "top-1/2 -translate-y-1/2"
-            }`}
-          >
-            <div className="pointer-events-auto flex flex-col items-center gap-4">
-              {!manualFocus && !searchQuery && (
-                <div className="mb-2 text-center">
-                  <p className="font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg">
-                    Where do you want to monitor?
-                  </p>
-                  <p className="mt-2 font-mono text-xs uppercase tracking-[0.18em] text-white/60">
-                    Enter a city or region and press Enter
-                  </p>
-                </div>
-              )}
-              <div
-                className={`flex items-center gap-3 rounded-2xl border-2 bg-white px-5 shadow-[0_8px_40px_rgba(0,0,0,0.5)] transition-all duration-500 dark:bg-zinc-900 ${
-                  manualFocus || searchQuery
-                    ? "border-border py-2"
-                    : "border-gold/70 py-4 ring-4 ring-gold/20"
-                }`}
-              >
-                <Search
-                  className={`shrink-0 transition-all duration-500 ${
-                    manualFocus || searchQuery
-                      ? "h-4 w-4 text-gold"
-                      : "h-5 w-5 text-gold"
-                  }`}
-                />
-                <input
-                  type="text"
-                  placeholder="e.g. Konstanz, Stuttgart, Freiburg…"
-                  value={searchQuery}
-                  autoFocus={!manualFocus}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (!e.target.value) setManualFocus(null);
-                  }}
-                  onKeyDown={async (e) => {
-                    if (e.key === "Enter" && searchQuery.trim().length >= 2) {
-                      try {
-                        const res = await fetch(
-                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(searchQuery)}`,
-                        );
-                        const data = await res.json();
-                        if (data.lat && data.lon) {
-                          setManualFocus({
-                            center: [data.lat, data.lon],
-                            zoom: 14,
-                          });
-                        }
-                      } catch (err) {
-                        console.error("Search geocoding failed", err);
-                      }
-                    }
-                  }}
-                  className={`bg-transparent font-mono text-zinc-900 placeholder-zinc-400 focus:outline-none dark:text-white dark:placeholder-zinc-500 ${
-                    manualFocus || searchQuery
-                      ? "w-72 text-sm lg:w-96"
-                      : "w-80 text-base lg:w-[480px]"
-                  }`}
-                />
-                {searchQuery && (
-                  <button
-                    onClick={() => {
-                      setSearchQuery("");
-                      setManualFocus(null);
-                    }}
-                    title="Clear search"
-                    className="rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-white"
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
           </main>
 
         {/* Command console — LISTEN + RESPOND for the focused city. It

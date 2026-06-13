@@ -4,6 +4,7 @@
  * rail, dossier — renders real data without touching the components.
  */
 import { eventMeta } from "@/lib/eventMeta";
+import { nearestCity } from "@/lib/cityGazetteer";
 import { getWorkingUrl } from "@/lib/urls";
 import type {
   Credibility,
@@ -83,6 +84,8 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     .map((s) => s.media_preview)
     .filter((x): x is string => Boolean(x))
     .slice(0, 4);
+  // `status` is retained on the view-model for compatibility, but the UI no
+  // longer renders a triage verdict — signals are coloured by trust instead.
   const status: CrisisReport["status"] =
     incident.confidence_score >= 0.7 ? "relevant" : "review";
   const locationConfidence = Math.min(95, 70 + incident.report_count * 5);
@@ -94,7 +97,8 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
       incident.report_count === 1 ? "" : "s"
     }`,
     crisisType: label,
-    city: "Konstanz sector",
+    eventType: incident.event_type,
+    city: nearestCity(incident.lat, incident.lon),
     coordinates: [incident.lat, incident.lon],
     status,
     confidence: Math.round(incident.confidence_score * 100),
@@ -104,14 +108,11 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
       (latestRationale ? `AI analyst: ${latestRationale} ` : "") +
       `${incident.summary}. Recommended action: ${incident.action_hint}`,
     locationConfidence,
-    reasonForDecision:
-      status === "relevant"
-        ? `Escalated: ${incident.report_count} independent source${
-            incident.report_count === 1 ? "" : "s"
-          } within a 1.0 km / 60 min window${
-            hasOfficial ? ", including an official channel (NINA / police)" : ""
-          }. Human confirmation still required before any operational response.`
-        : "Human review required: low corroboration so far — awaiting cross-source confirmation before escalation.",
+    reasonForDecision: `${incident.report_count} independent source${
+      incident.report_count === 1 ? "" : "s"
+    } within a 1.0 km / 60 min window${
+      hasOfficial ? ", including an official channel (NINA / police)" : ""
+    }. Trust is derived from source reliability and cross-source corroboration; any operational response remains a human decision.`,
     breakdown: {
       sourceReliability: hasOfficial ? 90 : 65,
       locationMatch: locationConfidence,
@@ -135,9 +136,10 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
   const label = eventMeta(report.event_type).label;
   return {
     id: report.id,
-    title: `${label} claim — debunked`,
+    title: `${label} — uncorroborated claim`,
     crisisType: label,
-    city: "Konstanz sector",
+    eventType: report.event_type,
+    city: nearestCity(report.lat, report.lon),
     coordinates: [report.lat, report.lon],
     status: "ignored",
     confidence: Math.round(report.credibility_score * 100),
@@ -145,7 +147,7 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
     timestamp: report.timestamp,
     aiSummary: report.rationale ?? report.reason_flagged,
     locationConfidence: 35,
-    reasonForDecision: `Ignored — ${flagRuleName(report.reason_flagged)}: ${report.reason_flagged}`,
+    reasonForDecision: `Low trust — ${flagRuleName(report.reason_flagged)}: ${report.reason_flagged}`,
     breakdown: {
       sourceReliability: 20,
       locationMatch: 35,

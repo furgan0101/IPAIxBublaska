@@ -21,8 +21,8 @@ _RULES_SPEC: tuple[tuple[str, str], ...] = (
     ("radiological", r"radioaktiv|strahlenalarm|strahlung ausgetreten|radiological|dirty bomb"),
     ("chemical_attack", r"giftgas|nervengift|chemiewaffe|chemical attack"),
     ("biological", r"\bseuche|milzbrand|biogefahr|biological hazard|anthrax"),
-    ("pandemic", r"pandemie|epidemie|infektionswelle|pandemic|epidemic"),
-    ("chemical_accident", r"chemieunfall|chemiest[öo]rfall|s[äa]ureaustritt|ammoniak|chlorgas|chemical (?:spill|accident)"),
+    ("pandemic", r"pandemie|epidemie|infektionswelle|quarant[äa]ne|norovirus|virus-?ausbruch|pandemic|epidemic"),
+    ("chemical_accident", r"chemieunfall|chemiest[öo]rfall|s[äa]ureaustritt|ammoniak|chlorgas|abc-?zug|atemwegsreiz|chemical (?:spill|accident)"),
     ("hazmat", r"gefahrgut|gefahrstoff|gasaustritt|gasleck|gasgeruch|[öo]laustritt|hazmat|gas leak"),
     # Terrorism / security
     ("terror_attack", r"\bterror|anschlag\b|amokl|\bamok\b|bombendrohung|sprengsatz|attentat|schie[ßs]s?erei|active shooter"),
@@ -42,7 +42,7 @@ _RULES_SPEC: tuple[tuple[str, str], ...] = (
     ("fire", r"\bbrand|brand\b|brennt|brennen(?:des|der)?\b|dachstuhl|rauchentwicklung|rauchs[äa]ule|flammen|\bfeuer\b|giftwolke|\bfire\b|smoke (?:column|plume)|feuerwehr.{0,20}einsatz|feuerwehreinsatz"),
     ("accident", r"verkehrsunfall|zugungl[üu]ck|zugkollision|flugzeugabsturz|massenkarambolage|zusammenstoß|zusammenstoss|\bunfall|unfall\b|karambolage|car crash|train crash|\baccident\b|schwerverletzt|leichtverletzt|\bverletzt\b"),
     # Supply / infrastructure crises
-    ("power_outage", r"stromausfall|\bblackout\b|ohne strom|stromnetz\w* ausgefallen|power (?:outage|cut)"),
+    ("power_outage", r"stromausfall|\bblackout\b|ohne strom|stromnetz\w* ausgefallen|trafo-?st[öo]rung|umspannwerk|power (?:outage|cut)"),
     ("telecom_failure", r"mobilfunkausfall|telefonnetz gest[öo]rt|notruf\w*\s+(?:gest[öo]rt|ausgefallen)|telecom failure"),
     ("water_supply", r"trinkwasser|wasserrohrbruch|rohrbruch|abkochgebot|wasserversorgung|boil.water advisory"),
     ("food_supply", r"lebensmittelknappheit|lebensmittelversorgung|food shortage"),

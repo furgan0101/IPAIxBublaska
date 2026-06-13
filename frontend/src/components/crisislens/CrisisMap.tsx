@@ -5,7 +5,8 @@ import { MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, Circle, 
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
+import { type CrisisReport } from "@/lib/mockReports";
+import { TRUST_LEVELS, TRUST_META, trustLevel } from "@/lib/trust";
 import { MEASURE_KINDS, type PlacedMeasure, type MeasureKind } from "@/lib/measures";
 
 /** Overview framing for the Baden-Württemberg sector. */
@@ -16,11 +17,44 @@ const FOCUS_ZOOM = 9;
 /** Wait for the detail-panel width transition (500 ms) before flying. */
 const FLY_DELAY_MS = 560;
 
-function nodeIcon(color: string, selected: boolean): L.DivIcon {
-  const size = selected ? 30 : 22;
+const EVENT_EMOJI: Record<string, string> = {
+  fire: "🔥",
+  wildfire: "🔥",
+  flood: "🌊",
+  storm: "⛈️",
+  earthquake: "📳",
+  heatwave: "🌡️",
+  cold_spell: "❄️",
+  explosion: "💥",
+  chemical_accident: "⚗️",
+  hazmat: "☣️",
+  accident: "🚗",
+  infrastructure_failure: "⚙️",
+  nuclear_accident: "☢️",
+  radiological: "☢️",
+  biological: "🦠",
+  chemical_attack: "🧪",
+  pandemic: "🏥",
+  terror_attack: "💣",
+  cbrn_attack: "☣️",
+  hostage: "🚨",
+  sabotage: "🔨",
+  power_outage: "⚡",
+  telecom_failure: "📵",
+  water_supply: "💧",
+  food_supply: "🌾",
+  supply_chain: "🚚",
+  evacuation: "🚶",
+};
+
+function nodeIcon(color: string, selected: boolean, emoji?: string): L.DivIcon {
+  const size = selected ? 32 : 26;
+  const inner = emoji
+    ? `<span class="cl-node-icon" style="font-size:${selected ? 14 : 12}px">${emoji}</span>`
+    : `<span class="cl-node-core"></span>`;
   return L.divIcon({
     className: "cl-node-wrap",
-    html: `<span class="cl-node${selected ? " cl-node--selected" : ""}" style="--node:${color}"><span class="cl-node-ring"></span><span class="cl-node-core"></span></span>`,
+    html: `<span class="cl-node${selected ? " cl-node--selected" : ""}" style="--node:${color}">${inner}<span class="cl-node-ring"></span></span>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     tooltipAnchor: [0, -size / 2],
@@ -164,15 +198,22 @@ export default function CrisisMap({
 }: CrisisMapProps) {
   const selected = reports.find((r) => r.id === selectedId) ?? null;
 
-  // Six icons total (3 statuses × selected/unselected) — build once.
+  // Build icons keyed by "eventType-trustLevel-selected".
+  // Falls back to trust-level-only key when eventType is unknown.
   const icons = useMemo(() => {
     const map = new Map<string, L.DivIcon>();
-    (Object.keys(STATUS_META) as (keyof typeof STATUS_META)[]).forEach(
-      (status) => {
-        map.set(`${status}-false`, nodeIcon(STATUS_META[status].color, false));
-        map.set(`${status}-true`, nodeIcon(STATUS_META[status].color, true));
-      },
-    );
+    const emojiKeys = Object.keys(EVENT_EMOJI);
+    TRUST_LEVELS.forEach((level) => {
+      const color = TRUST_META[level].color;
+      // fallback (no emoji)
+      map.set(`${level}-false`, nodeIcon(color, false));
+      map.set(`${level}-true`, nodeIcon(color, true));
+      // per-event-type variants
+      emojiKeys.forEach((et) => {
+        map.set(`${et}-${level}-false`, nodeIcon(color, false, EVENT_EMOJI[et]));
+        map.set(`${et}-${level}-true`, nodeIcon(color, true, EVENT_EMOJI[et]));
+      });
+    });
     return map;
   }, []);
 
@@ -194,13 +235,18 @@ export default function CrisisMap({
 
       {reports.map((report) => {
         const isSelected = report.id === selectedId;
-        const meta = STATUS_META[report.status];
+        const level = trustLevel(report.confidence);
+        const meta = TRUST_META[level];
         return (
           // Key includes selection so the divIcon swaps cleanly.
           <Marker
             key={`${report.id}-${isSelected}`}
             position={report.coordinates}
-            icon={icons.get(`${report.status}-${isSelected}`)}
+            icon={
+              report.eventType
+                ? icons.get(`${report.eventType}-${level}-${isSelected}`) ?? icons.get(`${level}-${isSelected}`)
+                : icons.get(`${level}-${isSelected}`)
+            }
             zIndexOffset={isSelected ? 1000 : 0}
             eventHandlers={{ click: () => onSelect(report.id) }}
           >

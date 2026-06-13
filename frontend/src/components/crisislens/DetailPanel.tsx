@@ -15,11 +15,11 @@ import {
 } from "lucide-react";
 
 import {
-  STATUS_META,
   type Credibility,
   type CrisisReport,
   type SourceType,
 } from "@/lib/mockReports";
+import { trustMeta } from "@/lib/trust";
 import { safeNewDate, timeAgo } from "@/lib/format";
 import ConfidenceRing from "./ConfidenceRing";
 
@@ -95,7 +95,7 @@ function PanelContent({
   report: CrisisReport;
   onClose: () => void;
 }) {
-  const meta = STATUS_META[report.status];
+  const meta = trustMeta(report.confidence);
   const stamp = safeNewDate(report.timestamp);
 
   return (
@@ -110,7 +110,7 @@ function PanelContent({
             <span
               className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}
             >
-              {meta.badge}
+              {meta.label}
             </span>
           </div>
           <button
@@ -314,8 +314,8 @@ function PanelContent({
       {/* Footer disclaimer */}
       <div className="border-t border-border px-6 py-3.5">
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Plausibility estimates are AI-assisted and advisory only. CrisisLens
-          does not verify ground truth — escalation requires human
+          Trust estimates are AI-assisted and advisory only. CrisisLens does
+          not verify ground truth — any operational response requires human
           confirmation.
         </p>
       </div>

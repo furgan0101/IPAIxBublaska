@@ -73,6 +73,15 @@ export interface HealthInfo {
   data_mode?: "mock" | "live";
 }
 
+export interface DwdStatus {
+  active: boolean;
+  level: number;
+  headline?: string | null;
+  description?: string | null;
+  timestamp?: string | null;
+  url: string;
+}
+
 /** FastAPI backend base URL (override via NEXT_PUBLIC_API_URL). */
 export const API_BASE: string =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

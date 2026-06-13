@@ -51,7 +51,7 @@ def make_report(**overrides: object) -> RawReport:
 
 def test_mock_data_matches_raw_report_schema() -> None:
     reports = load_raw_reports()
-    assert len(reports) == 12
+    assert len(reports) == 60
 
 
 def test_recycled_footage_is_flagged() -> None:
@@ -102,13 +102,19 @@ def test_reports_outside_radius_stay_separate() -> None:
 
 def test_full_pipeline_on_mock_data() -> None:
     result = run_pipeline(load_raw_reports())
-    assert len(result["debunked"]) == 4
-    assert sum(i.report_count for i in result["incidents"]) == 8
+    assert len(result["debunked"]) == 35
+    assert sum(i.report_count for i in result["incidents"]) == 25
     assert {i.event_type for i in result["incidents"]} == {
-        "flood",
+        "chemical_accident",
+        "evacuation",
+        "explosion",
         "fire",
-        "storm",
+        "flood",
+        "heatwave",
+        "pandemic",
         "power_outage",
+        "storm",
+        "water_supply",
     }
 
 
@@ -153,9 +159,10 @@ def test_incidents_carry_guidance_and_sources() -> None:
 
 def test_single_source_incident_gets_low_corroboration_hint() -> None:
     result = run_pipeline(load_raw_reports())
-    outage = next(i for i in result["incidents"] if i.event_type == "power_outage")
-    assert outage.report_count == 1
-    assert outage.action_hint.startswith("Low corroboration")
+    singles = [i for i in result["incidents"] if i.report_count == 1]
+    assert singles  # the mock feed must keep exercising this path
+    for incident in singles:
+        assert incident.action_hint.startswith("Low corroboration")
 
 
 # --- Live injection (POST /api/reports) ------------------------------------------

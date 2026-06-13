@@ -64,6 +64,8 @@ export interface CrisisReport {
   mediaConsistency?: string | null;
   /** Live mode: link to the original post/release. */
   externalUrl?: string | null;
+  /** Raw event-type key (e.g. "fire", "flood") — used for map icons. */
+  eventType?: string;
 }
 
 export const STATUS_META: Record<
@@ -115,6 +117,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "KN-0142",
     title: "Structure fire near Konstanz central station",
     crisisType: "Fire",
+    eventType: "fire",
     city: "Konstanz",
     coordinates: [47.6594, 9.1744],
     status: "relevant",
@@ -163,6 +166,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "S-0287",
     title: "Multi-vehicle accident on B14 arterial road",
     crisisType: "Traffic Accident",
+    eventType: "accident",
     city: "Stuttgart",
     coordinates: [48.7784, 9.18],
     status: "relevant",
@@ -211,6 +215,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "FR-0311",
     title: "Flooding on riverside road along the Dreisam",
     crisisType: "Flooding",
+    eventType: "flood",
     city: "Freiburg",
     coordinates: [47.992, 7.855],
     status: "review",
@@ -259,6 +264,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "KA-0193",
     title: "Clustered power-outage reports, Oststadt district",
     crisisType: "Power Outage",
+    eventType: "power_outage",
     city: "Karlsruhe",
     coordinates: [49.0098, 8.431],
     status: "relevant",
@@ -307,6 +313,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "MA-0356",
     title: "Unverified explosion rumour, Neckarstadt",
     crisisType: "Explosion Rumour",
+    eventType: "explosion",
     city: "Mannheim",
     coordinates: [49.4944, 8.466],
     status: "ignored",
@@ -348,6 +355,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "UL-0228",
     title: "Storm damage blocking road near the Münster",
     crisisType: "Storm Damage",
+    eventType: "storm",
     city: "Ulm",
     coordinates: [48.3994, 9.9916],
     status: "relevant",
@@ -396,6 +404,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "HD-0301",
     title: "Crowd panic rumour, Heidelberg old town",
     crisisType: "Crowd Incident Rumour",
+    eventType: "terror_attack",
     city: "Heidelberg",
     coordinates: [49.4122, 8.71],
     status: "ignored",
@@ -437,6 +446,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "HN-0274",
     title: "Fallen tree on residential street, Heilbronn-Ost",
     crisisType: "Fallen Tree",
+    eventType: "storm",
     city: "Heilbronn",
     coordinates: [49.15, 9.22],
     status: "review",

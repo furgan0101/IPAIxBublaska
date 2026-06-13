@@ -55,6 +55,7 @@ import httpx
 from ingestion import IngestionService, IngestionSettings, default_connectors
 from ingestion.geocode import Geocoder
 from ingestion.storage import FeedStore
+from live_incident import build_live_incidents
 from logic.geospatial import cluster_reports
 from logic.verification import (
     ai_mode,
@@ -65,6 +66,7 @@ from logic.verification import (
 )
 from schemas import (
     DebunkedReport,
+    DwdStatus,
     RawReport,
     ReportSubmission,
     SubmissionResult,
@@ -95,6 +97,12 @@ class PipelineState(TypedDict):
 # In-memory store. Credible raw reports are kept so live injections can be
 # re-clustered against the existing set without re-reading the feed.
 state: PipelineState = {"credible": [], "incidents": [], "debunked": [], "live_seq": 0}
+
+# The Mannheim-Rheinau industrial-fire scenario (data/live.json), built once at
+# reset and served additively alongside the synthetic mock incidents. Kept in
+# its own list so live report injection (which re-clusters `state`) never wipes
+# it, and so the mock-only pipeline tests can inspect `state` in isolation.
+live_incidents: list[VerifiedIncident] = []
 
 # Live ingestion (FEEDS_ENABLED=true): created during lifespan, None in mock mode.
 ingestion_service: IngestionService | None = None
@@ -144,12 +152,15 @@ def run_pipeline(reports: list[RawReport]) -> PipelineResult:
 
 def reset_state() -> None:
     """(Re)load the mock feed and rebuild the in-memory pipeline state."""
-    reports = rebase_timestamps(load_raw_reports(), now=datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    reports = rebase_timestamps(load_raw_reports(), now=now)
     credible, debunked = filter_reports(reports)
     state["credible"] = credible
     state["debunked"] = debunked
     state["incidents"] = cluster_reports(credible)
     state["live_seq"] = 0
+    global live_incidents
+    live_incidents = build_live_incidents(now)
 
 
 def submit_report(submission: ReportSubmission) -> SubmissionResult:
@@ -280,8 +291,51 @@ app.add_middleware(
 
 @app.get("/api/incidents", response_model=list[VerifiedIncident])
 def get_incidents() -> list[VerifiedIncident]:
-    """Verified, geo-clustered incidents for the live map."""
-    return state["incidents"]
+    """Verified, geo-clustered incidents for the live map (mock-feed clusters
+    plus the Mannheim-Rheinau live.json scenario)."""
+    return state["incidents"] + live_incidents
+
+
+@app.get("/api/dwd/status", response_model=DwdStatus)
+def get_dwd_status() -> DwdStatus:
+    """Scan active reports for the most severe DWD warning."""
+    # Look in credible reports and live incidents
+    all_reports = state["credible"][:]
+    for inc in live_incidents:
+        for src in inc.sources:
+            # Reconstruct RawReport-like object for the logic below
+            all_reports.append(src)
+
+    dwd_reports = [
+        r for r in all_reports 
+        if r.source == "dwd" or (r.source == "nina" and r.author == "DWD")
+        or "dwd" in r.author.lower()
+    ]
+    
+    if not dwd_reports:
+        return DwdStatus(active=False)
+
+    # Sort by severity (Stufe/Level X in text) then by timestamp
+    def warning_level(text: str) -> int:
+        import re
+        match = re.search(r"(?:stufe|level)\s*(\d+)", text.lower())
+        return int(match.group(1)) if match else 0
+
+    # Pick the one with highest level, then newest
+    best = sorted(
+        dwd_reports, 
+        key=lambda r: (warning_level(r.text), r.timestamp), 
+        reverse=True
+    )[0]
+
+    return DwdStatus(
+        active=True,
+        level=warning_level(best.text),
+        headline=best.text.split(":")[0][:100],
+        description=best.text,
+        timestamp=best.timestamp,
+        url=getattr(best, "url", "https://www.dwd.de") or "https://www.dwd.de"
+    )
 
 
 @app.get("/api/debunked", response_model=list[DebunkedReport])
@@ -328,7 +382,7 @@ def health() -> dict[str, object]:
     `data_mode`: live when real-feed ingestion is enabled."""
     payload: dict[str, object] = {
         "status": "ok",
-        "incidents": len(state["incidents"]),
+        "incidents": len(state["incidents"]) + len(live_incidents),
         "debunked": len(state["debunked"]),
         "ai_mode": ai_mode(),
         "data_mode": "live" if ingestion_service is not None else "mock",

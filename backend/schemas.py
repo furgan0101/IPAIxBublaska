@@ -178,3 +178,14 @@ class SubmissionResult(BaseModel):
     incident_id: str | None = None
     confidence_score: float | None = None
     reason_flagged: str | None = None
+
+
+class DwdStatus(BaseModel):
+    """Current DWD weather warning summary."""
+
+    active: bool
+    level: int = 0
+    headline: str | None = None
+    description: str | None = None
+    timestamp: datetime | None = None
+    url: str = "https://www.dwd.de"

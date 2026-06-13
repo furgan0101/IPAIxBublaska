@@ -2,6 +2,8 @@
 
 import { Gauge } from "lucide-react";
 import TagFilter, { type TagCount } from "./TagFilter";
+import CityTypeahead from "./CityTypeahead";
+import { type CityHit } from "@/lib/cityGazetteer";
 
 interface FilterToolbarProps {
   tagCounts: TagCount[];
@@ -9,11 +11,14 @@ interface FilterToolbarProps {
   setActiveTag: (tag: string | null) => void;
   minConfidence: number;
   setMinConfidence: (val: number) => void;
+  regionName: string | null;
+  onSelectCity: (hit: CityHit) => void;
+  onClearRegion: () => void;
 }
 
 /**
  * Horizontal toolbar above the map for signal filtering:
- * tags (event type) and confidence (LLM score).
+ * region typeahead, tags (event type) and confidence (LLM score).
  */
 export default function FilterToolbar({
   tagCounts,
@@ -21,11 +26,19 @@ export default function FilterToolbar({
   setActiveTag,
   minConfidence,
   setMinConfidence,
+  regionName,
+  onSelectCity,
+  onClearRegion,
 }: FilterToolbarProps) {
   return (
     <div className="flex shrink-0 items-center justify-between gap-6 border-b border-border bg-card px-6 py-2">
       <div className="flex min-w-0 items-center gap-4">
-        <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+        <CityTypeahead
+          selectedName={regionName}
+          onSelect={onSelectCity}
+          onClear={onClearRegion}
+        />
+        <span className="shrink-0 border-l border-border pl-4 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
           Filters:
         </span>
         <TagFilter
