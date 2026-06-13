@@ -17,14 +17,15 @@ import {
   ShieldAlert,
   UserRound,
   X,
+  Share2,
 } from "lucide-react";
 
 import {
-  STATUS_META,
   type Credibility,
   type CrisisReport,
   type SourceType,
 } from "@/lib/mockReports";
+import { trustMeta } from "@/lib/trust";
 import { safeNewDate, timeAgo } from "@/lib/format";
 import ConfidenceRing from "./ConfidenceRing";
 
@@ -245,7 +246,7 @@ function PanelContent({
   onDispatch?: (report: CrisisReport) => Promise<boolean>;
   onExportPdf?: (report: CrisisReport) => void;
 }) {
-  const meta = STATUS_META[report.status];
+  const meta = trustMeta(report.confidence);
   const stamp = safeNewDate(report.timestamp);
 
   return (
@@ -260,7 +261,7 @@ function PanelContent({
             <span
               className={`rounded-md border px-2 py-0.5 text-[11px] font-semibold ${meta.chip}`}
             >
-              {meta.badge}
+              {meta.label}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
@@ -413,6 +414,27 @@ function PanelContent({
           </p>
         </section>
 
+        {report.related_incidents && report.related_incidents.length > 0 && (
+          <section className="rounded-lg border border-gold/30 bg-gold/5 p-4">
+            <div className="flex items-center gap-2">
+              <Share2 className="h-3.5 w-3.5 text-gold" />
+              <SectionLabel>Connected incidents</SectionLabel>
+            </div>
+            <div className="mt-3 space-y-3">
+              {report.related_incidents.map((rel) => (
+                <div key={rel.incident_id} className="text-[13px] leading-relaxed">
+                  <span className="font-bold text-gold uppercase text-[10px] block mb-1">
+                    {rel.relation_type} relationship
+                  </span>
+                  <p className="text-foreground/90 italic">
+                    “{rel.rationale}”
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {!report.classified &&
           ((report.mediaPreviews?.length ?? 0) > 0 || report.mediaConsistency) && (
           <section>
@@ -518,8 +540,8 @@ function PanelContent({
       {/* Footer disclaimer */}
       <div className="border-t border-border px-6 py-3.5">
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Plausibility estimates are AI-assisted and advisory only. CrisisLens
-          does not verify ground truth — escalation requires human
+          Trust estimates are AI-assisted and advisory only. CrisisLens does
+          not verify ground truth — any operational response requires human
           confirmation.
         </p>
       </div>

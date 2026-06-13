@@ -129,6 +129,8 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     .map((s) => s.media_preview)
     .filter((x): x is string => Boolean(x))
     .slice(0, 4);
+  // `status` is retained on the view-model for compatibility, but the UI no
+  // longer renders a triage verdict — signals are coloured by trust instead.
   const status: CrisisReport["status"] =
     incident.confidence_score >= 0.7 ? "relevant" : "review";
   const locationConfidence = Math.min(95, 70 + incident.report_count * 5);
@@ -143,6 +145,7 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
       incident.report_count === 1 ? "" : "s"
     }`,
     crisisType: label,
+    eventType: incident.event_type,
     city: nearestCity(incident.lat, incident.lon),
     coordinates: [incident.lat, incident.lon],
     status,
@@ -159,14 +162,11 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
       : (latestRationale ? `AI analyst: ${latestRationale} ` : "") +
         `${incident.summary}.`,
     locationConfidence,
-    reasonForDecision:
-      status === "relevant"
-        ? `Escalated: ${incident.report_count} independent source${
-            incident.report_count === 1 ? "" : "s"
-          } within a 1.0 km / 60 min window${
-            hasOfficial ? ", including an official channel (NINA / police)" : ""
-          }. Human confirmation still required before any operational response.`
-        : "Human review required: low corroboration so far — awaiting cross-source confirmation before escalation.",
+    reasonForDecision: `${incident.report_count} independent source${
+      incident.report_count === 1 ? "" : "s"
+    } within a 1.0 km / 60 min window${
+      hasOfficial ? ", including an official channel (NINA / police)" : ""
+    }. Trust is derived from source reliability and cross-source corroboration; any operational response remains a human decision.`,
     breakdown: {
       sourceReliability: hasOfficial ? 90 : 65,
       locationMatch: locationConfidence,
@@ -199,6 +199,7 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     dispatched: incident.dispatched ?? false,
     dispatchedAt: incident.dispatched_at ?? null,
     classified,
+    related_incidents: incident.related_incidents,
   };
 }
 
@@ -206,8 +207,9 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
   const label = eventMeta(report.event_type).label;
   return {
     id: report.id,
-    title: `${label} claim — debunked`,
+    title: `${label} — uncorroborated claim`,
     crisisType: label,
+    eventType: report.event_type,
     city: nearestCity(report.lat, report.lon),
     coordinates: [report.lat, report.lon],
     status: "ignored",
@@ -219,7 +221,7 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
     timestamp: report.timestamp,
     aiSummary: report.rationale ?? report.reason_flagged,
     locationConfidence: 35,
-    reasonForDecision: `Ignored — ${flagRuleName(report.reason_flagged)}: ${report.reason_flagged}`,
+    reasonForDecision: `Low trust — ${flagRuleName(report.reason_flagged)}: ${report.reason_flagged}`,
     breakdown: {
       sourceReliability: 20,
       locationMatch: 35,
@@ -244,11 +246,58 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
   };
 }
 
+export function adaptSource(
+  source: SourceReport,
+  parent: VerifiedIncident,
+): CrisisReport {
+  const label = eventMeta(parent.event_type).label;
+  return {
+    id: source.id,
+    title: `${label} — corroborating signal`,
+    crisisType: label,
+    eventType: parent.event_type,
+    city: nearestCity(parent.lat, parent.lon),
+    coordinates: [parent.lat, parent.lon],
+    status: parent.confidence_score >= 0.7 ? "relevant" : "review",
+    confidence: Math.round((source.ai_credibility ?? 0.5) * 100),
+    riskLevel: RISK_BY_SEVERITY[parent.severity] ?? "Low",
+    timestamp: source.timestamp,
+    aiSummary: source.ai_rationale ?? parent.summary,
+    locationConfidence: 50,
+    reasonForDecision: `Corroborating source for incident ${parent.id}. Reliability: ${Math.round(
+      (source.ai_credibility ?? 0.5) * 100,
+    )}%`,
+    breakdown: {
+      sourceReliability: Math.round((source.ai_credibility ?? 0.5) * 100),
+      locationMatch: 50,
+      mediaSupport: source.media_preview ? 70 : 30,
+      crossSourceConfirmation: Math.round(parent.confidence_score * 100),
+    },
+    evidenceLinks: [evidenceFrom(source)],
+    signalSnippet: truncate(source.text, 140),
+    signalSource: `${source.author} · ${sourceTypeFor(source.source)}`,
+    mediaPreviews: source.media_preview ? [source.media_preview] : [],
+    mediaConsistency: source.ai_media_note ?? null,
+    externalUrl: getWorkingUrl(
+      source.url,
+      source.text,
+      source.source,
+      source.author,
+    ),
+  };
+}
+
 export function adaptAll(
   incidents: VerifiedIncident[],
   debunked: DebunkedReport[],
 ): CrisisReport[] {
-  return [...incidents.map(adaptIncident), ...debunked.map(adaptDebunked)];
+  const incidentReports = incidents.map(adaptIncident);
+  const sourceReports = incidents.flatMap((inc) =>
+    inc.sources.map((src) => adaptSource(src, inc)),
+  );
+  const debunkedReports = debunked.map(adaptDebunked);
+
+  return [...incidentReports, ...sourceReports, ...debunkedReports];
 }
 
 export const toReports = adaptAll;

@@ -41,6 +41,7 @@ from ingestion.gdacs import GdacsConnector
 from ingestion.storage import DispatchState, FeedStore, StoredReport, content_hash
 from logic.geospatial import cluster_reports
 from logic.guidance import action_hint
+from logic.relations import find_relations
 from logic.verification import Assessment, annotate_report, assess_report
 from schemas import DebunkedReport, RawReport, VerifiedIncident
 
@@ -321,22 +322,33 @@ class IngestionService:
     # -- snapshot -------------------------------------------------------------------
 
     async def _rebuild_and_publish(self) -> None:
-        credible, incidents, debunked = await asyncio.to_thread(self._rebuild)
+        credible, incidents, debunked = await self._rebuild()
         self._publish(credible, incidents, debunked)
 
-    def _rebuild(
+    async def _rebuild(
         self,
     ) -> tuple[list[RawReport], list[VerifiedIncident], list[DebunkedReport]]:
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(hours=self._settings.retention_hours)
-        self._store.purge_before(cutoff - timedelta(days=7))
-        stored = self._store.load_recent(cutoff)
+        await asyncio.to_thread(self._store.purge_before, cutoff - timedelta(days=7))
+        stored = await asyncio.to_thread(self._store.load_recent, cutoff)
+        
         credible = [entry.report for entry in stored if entry.credible]
         incidents = self._with_source_trust(cluster_reports(credible))
+        
+        # Link incidents (LLM pass)
+        linked_incidents: list[VerifiedIncident] = []
+        for i, incident in enumerate(incidents):
+            # Compare against all previously processed incidents in this batch
+            relations = await find_relations(incident, linked_incidents)
+            if relations:
+                incident = incident.model_copy(update={"related_incidents": relations})
+            linked_incidents.append(incident)
+
         debunked = [
             _to_debunked(entry) for entry in reversed(stored) if not entry.credible
         ][:DEBUNKED_LIMIT]
-        return credible, incidents, debunked
+        return credible, linked_incidents, debunked
 
     def _with_source_trust(
         self, incidents: list[VerifiedIncident]

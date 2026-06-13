@@ -23,6 +23,15 @@ export const BAND_COLORS: Record<ConfidenceBand, string> = {
   "very-high": "#b91c1c",
 };
 
+/** Short human label per band, for tooltips/legends. */
+export const BAND_LABELS: Record<ConfidenceBand, string> = {
+  "very-low": "Very low",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  "very-high": "Very high",
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -69,6 +78,10 @@ export function confidenceBand(pct: number): ConfidenceBand {
 
 export function confidenceColor(pct: number): string {
   return BAND_COLORS[confidenceBand(pct)];
+}
+
+export function confidenceLabel(pct: number): string {
+  return BAND_LABELS[confidenceBand(pct)];
 }
 
 /** Fainter pins for low confidence: 0.55 at 0 percent, 1.0 at 100 percent. */

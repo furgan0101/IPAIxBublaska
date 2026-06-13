@@ -62,6 +62,7 @@ import httpx
 from ingestion import IngestionService, IngestionSettings, default_connectors
 from ingestion.geocode import Geocoder
 from ingestion.storage import FeedStore
+from live_incident import build_live_incidents
 from logic.geospatial import RADIUS_KM, cluster_reports
 from logic.verification import (
     ai_mode,
@@ -74,6 +75,9 @@ from logic.verification import (
 )
 from schemas import (
     DebunkedReport,
+    DwdStatus,
+    MobiDataStatus,
+    PegelStatus,
     RawReport,
     ReportSubmission,
     SubmissionResult,
@@ -104,6 +108,12 @@ class PipelineState(TypedDict):
 # In-memory store. Credible raw reports are kept so live injections can be
 # re-clustered against the existing set without re-reading the feed.
 state: PipelineState = {"credible": [], "incidents": [], "debunked": [], "live_seq": 0}
+
+# The Mannheim-Rheinau industrial-fire scenario (data/live.json), built once at
+# reset and served additively alongside the synthetic mock incidents. Kept in
+# its own list so live report injection (which re-clusters `state`) never wipes
+# it, and so the mock-only pipeline tests can inspect `state` in isolation.
+live_incidents: list[VerifiedIncident] = []
 
 # Live ingestion (FEEDS_ENABLED=true): created during lifespan, None in mock mode.
 ingestion_service: IngestionService | None = None
@@ -259,12 +269,15 @@ def run_pipeline(reports: list[RawReport]) -> PipelineResult:
 def reset_state() -> None:
     """(Re)load the mock feed and rebuild the in-memory pipeline state."""
     _dispatch_registry.clear()
-    reports = rebase_timestamps(load_raw_reports(), now=datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    reports = rebase_timestamps(load_raw_reports(), now=now)
     credible, debunked = filter_reports(reports)
     state["credible"] = credible
     state["debunked"] = debunked
     state["incidents"] = _apply_dispatch_state(cluster_reports(credible))
     state["live_seq"] = 0
+    global live_incidents
+    live_incidents = build_live_incidents(now)
 
 
 def submit_report(submission: ReportSubmission) -> SubmissionResult:
@@ -395,8 +408,359 @@ app.add_middleware(
 
 @app.get("/api/incidents", response_model=list[VerifiedIncident])
 def get_incidents() -> list[VerifiedIncident]:
-    """Verified, geo-clustered incidents for the live map."""
-    return state["incidents"]
+    """Verified, geo-clustered incidents for the live map (mock-feed clusters
+    plus the Mannheim-Rheinau live.json scenario)."""
+    return state["incidents"] + live_incidents
+
+
+@app.get("/api/dwd/status", response_model=DwdStatus)
+async def get_dwd_status(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> DwdStatus:
+    """Scan active reports for the most severe DWD warning, optionally filtered by location."""
+    # Fetch current temperature from Bright Sky
+    temperature: float | None = None
+    temp_lat = lat if lat is not None else 49.534767
+    temp_lon = lon if lon is not None else 8.461813
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(f"https://api.brightsky.dev/current_weather?lat={temp_lat}&lon={temp_lon}")
+            if res.status_code == 200:
+                temp_data = res.json()
+                temperature = temp_data.get("weather", {}).get("temperature")
+    except Exception:
+        pass
+
+    # Fetch live alerts from Bright Sky alerts API directly
+    live_alerts = []
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(f"https://api.brightsky.dev/alerts?lat={temp_lat}&lon={temp_lon}")
+            if res.status_code == 200:
+                alerts_data = res.json()
+                live_alerts = alerts_data.get("alerts") or []
+    except Exception:
+        pass
+
+    if live_alerts:
+        severity_map = {"minor": 1, "moderate": 2, "severe": 3, "extreme": 4}
+        
+        def alert_key(alert):
+            sev = severity_map.get(alert.get("severity", "").lower(), 0)
+            onset = alert.get("onset", "")
+            return (sev, onset)
+            
+        best_alert = sorted(live_alerts, key=alert_key, reverse=True)[0]
+        headline = best_alert.get("headline_de") or best_alert.get("headline_en") or "Amtliche Warnung"
+        description = best_alert.get("description_de") or best_alert.get("description_en") or ""
+        timestamp_str = best_alert.get("onset") or best_alert.get("effective")
+        timestamp = None
+        if timestamp_str:
+            try:
+                from datetime import datetime
+                if timestamp_str.endswith("Z"):
+                    timestamp_str = timestamp_str[:-1] + "+00:00"
+                timestamp = datetime.fromisoformat(timestamp_str)
+            except Exception:
+                pass
+                
+        return DwdStatus(
+            active=True,
+            level=severity_map.get(best_alert.get("severity", "").lower(), 0),
+            headline=headline[:100],
+            description=description,
+            timestamp=timestamp,
+            url=f"https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html?ort={q or 'Mannheim'}",
+            temperature=temperature
+        )
+
+    # Fallback to local active reports scanning
+    # Look in credible reports and live incidents
+    all_reports: list[tuple[Any, float, float]] = []
+    for r in state["credible"]:
+        all_reports.append((r, r.lat, r.lon))
+    for inc in live_incidents:
+        for src in inc.sources:
+            all_reports.append((src, inc.lat, inc.lon))
+
+    dwd_reports = []
+    for r, r_lat, r_lon in all_reports:
+        is_dwd = (
+            r.source == "dwd"
+            or (r.source == "nina" and r.author == "DWD")
+            or "dwd" in r.author.lower()
+        )
+        if not is_dwd:
+            continue
+
+        matched = True
+        if (lat is not None and lon is not None) or q:
+            matched_by_dist = False
+            matched_by_name = False
+
+            if lat is not None and lon is not None:
+                from geopy.distance import geodesic
+                dist = geodesic((lat, lon), (r_lat, r_lon)).kilometers
+                if dist <= 30.0:
+                    matched_by_dist = True
+
+            if q:
+                q_clean = q.strip().lower()
+                if q_clean in r.text.lower() or q_clean in getattr(r, "author", "").lower():
+                    matched_by_name = True
+
+            matched = matched_by_dist or matched_by_name
+
+        if not matched:
+            continue
+
+        dwd_reports.append((r, r_lat, r_lon))
+
+    if not dwd_reports:
+        return DwdStatus(active=False, temperature=temperature)
+
+    # Sort by severity (Stufe/Level X in text) then by timestamp
+    def warning_level(text: str) -> int:
+        import re
+        match = re.search(r"(?:stufe|level)\s*(\d+)", text.lower())
+        return int(match.group(1)) if match else 0
+
+    # Pick the one with highest level, then newest
+    best_item = sorted(
+        dwd_reports,
+        key=lambda item: (warning_level(item[0].text), item[0].timestamp),
+        reverse=True
+    )[0]
+    best = best_item[0]
+
+    return DwdStatus(
+        active=True,
+        level=warning_level(best.text),
+        headline=best.text.split(":")[0][:100],
+        description=best.text,
+        timestamp=best.timestamp,
+        url=f"https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html?ort={q or 'Mannheim'}",
+        temperature=temperature
+    )
+
+
+@app.get("/api/pegel/status", response_model=PegelStatus)
+async def get_pegel_status(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> PegelStatus:
+    """Get the nearest water level (pegel) station information from PEGELONLINE."""
+    temp_lat = lat if lat is not None else 49.534767
+    temp_lon = lon if lon is not None else 8.461813
+
+    stations = []
+    for radius in [30, 50, 100]:
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(
+                    f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?"
+                    f"latitude={temp_lat}&longitude={temp_lon}&radius={radius}"
+                    f"&includeTimeseries=true&includeCurrentMeasurement=true"
+                )
+                if res.status_code == 200:
+                    stations = res.json()
+                    if stations:
+                        break
+        except Exception:
+            pass
+
+    if not stations:
+        return PegelStatus(active=False)
+
+    from geopy.distance import geodesic
+    best_station = None
+    best_dist = float("inf")
+    best_w_timeseries = None
+
+    for station in stations:
+        st_lat = station.get("latitude")
+        st_lon = station.get("longitude")
+        if st_lat is None or st_lon is None:
+            continue
+        
+        timeseries_list = station.get("timeseries") or []
+        w_ts = None
+        for ts in timeseries_list:
+            if ts.get("shortname") == "W" and ts.get("currentMeasurement"):
+                w_ts = ts
+                break
+        
+        if not w_ts:
+            continue
+
+        dist = geodesic((temp_lat, temp_lon), (st_lat, st_lon)).kilometers
+        if dist < best_dist:
+            best_dist = dist
+            best_station = station
+            best_w_timeseries = w_ts
+
+    if not best_station or not best_w_timeseries:
+        return PegelStatus(active=False)
+
+    curr = best_w_timeseries["currentMeasurement"]
+    val = curr.get("value")
+    timestamp_str = curr.get("timestamp")
+    timestamp = None
+    if timestamp_str:
+        try:
+            if timestamp_str.endswith("Z"):
+                timestamp_str = timestamp_str[:-1] + "+00:00"
+            timestamp = datetime.fromisoformat(timestamp_str)
+        except Exception:
+            pass
+
+    state_raw = curr.get("stateMnwMhw") or "normal"
+    state_display = "Normal"
+    if state_raw.lower() in ("low", "niedrigwasser", "mnw"):
+        state_display = "Niedrigwasser"
+    elif state_raw.lower() in ("high", "hochwasser", "mhw", "above_mhw"):
+        state_display = "Hochwasser"
+
+    station_name = best_station.get("shortname")
+    water_name = best_station.get("water", {}).get("longname") or best_station.get("water", {}).get("shortname") or "RHEIN"
+    
+    url = f"https://www.pegelonline.wsv.de/gast/pegelinformationen?scrollPosition=0&gewaesser={water_name.upper()}"
+
+    return PegelStatus(
+        active=True,
+        station=station_name,
+        water=water_name,
+        value=val,
+        unit=best_w_timeseries.get("unit") or "cm",
+        timestamp=timestamp,
+        state=state_display,
+        url=url
+    )
+
+
+@app.get("/api/mobidata/status", response_model=MobiDataStatus)
+async def get_mobidata_status(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> MobiDataStatus:
+    """Fetch current roadworks, construction, and closure warnings from MobiData BW."""
+    temp_lat = lat if lat is not None else 49.534767
+    temp_lon = lon if lon is not None else 8.461813
+
+    geojson_data = {}
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get("https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json")
+            if res.status_code == 200:
+                geojson_data = res.json()
+    except Exception:
+        pass
+
+    if not geojson_data or not isinstance(geojson_data, dict):
+        return MobiDataStatus(active=False)
+
+    features = geojson_data.get("features") or []
+    if not features:
+        return MobiDataStatus(active=False)
+
+    from geopy.distance import geodesic
+    nearby_count = 0
+    closest_feature = None
+    closest_dist = float("inf")
+
+    def is_blocked_or_heavy_traffic(f):
+        if not f or not isinstance(f, dict):
+            return False
+        props = f.get("properties") or {}
+        text = (
+            str(props.get("id") or "") + " " +
+            str(props.get("type") or "") + " " +
+            str(props.get("description") or "") + " " +
+            str(props.get("text") or "") + " " +
+            str(props.get("reason") or "") + " " +
+            str(props.get("constructionReason") or "") + " " +
+            str(props.get("location") or "") + " " +
+            str(props.get("place") or "")
+        ).lower()
+        
+        blocked = any(w in text for w in ("sperr", "block", "closed", "gesperrt"))
+        heavy = any(w in text for w in ("stau", "delay", "congestion", "verzöger", "zähflüss", "überlast"))
+        return blocked or heavy
+
+    def get_first_coords(geom):
+        if not geom or not isinstance(geom, dict):
+            return None
+        t = geom.get("type")
+        c = geom.get("coordinates")
+        if not c:
+            return None
+        try:
+            if t == "Point":
+                return float(c[1]), float(c[0])
+            elif t == "LineString" and len(c) > 0:
+                return float(c[0][1]), float(c[0][0])
+            elif t == "Polygon" and len(c) > 0 and len(c[0]) > 0:
+                return float(c[0][0][1]), float(c[0][0][0])
+        except (ValueError, TypeError, IndexError):
+            pass
+        return None
+
+    for f in features:
+        if not isinstance(f, dict):
+            continue
+        if not is_blocked_or_heavy_traffic(f):
+            continue
+        geom = f.get("geometry")
+        coords = get_first_coords(geom)
+        if not coords:
+            continue
+
+        dist = geodesic((temp_lat, temp_lon), coords).kilometers
+        if dist <= 30.0:
+            nearby_count += 1
+            if dist < closest_dist:
+                closest_dist = dist
+                closest_feature = f
+
+    if not closest_feature:
+        return MobiDataStatus(active=False, count=0)
+
+    props = closest_feature.get("properties") or {}
+    road = props.get("road") or props.get("roadNumber") or props.get("street") or ""
+    loc = props.get("location") or props.get("place") or props.get("name") or ""
+    desc = props.get("description") or props.get("text") or props.get("reason") or props.get("constructionReason") or ""
+
+    if not road and not loc and not desc:
+        desc = "Roadworks / construction warning"
+
+    url = "https://www.verkehrsinfo-bw.de"
+
+    return MobiDataStatus(
+        active=True,
+        count=nearby_count,
+        road=str(road)[:50] if road else None,
+        location=str(loc)[:100] if loc else None,
+        description=str(desc)[:200] if desc else None,
+        distance_km=round(closest_dist, 1),
+        url=url
+    )
+
+
+@app.get("/api/mobidata/roadworks")
+async def get_mobidata_roadworks() -> dict[str, object]:
+    """Fetch the raw roadworks GeoJSON from MobiData BW."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get("https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        return {"error": str(e), "type": "FeatureCollection", "features": []}
+    return {"type": "FeatureCollection", "features": []}
 
 
 @app.get("/api/debunked", response_model=list[DebunkedReport])
@@ -474,7 +838,7 @@ def health() -> dict[str, object]:
     `data_mode`: live when real-feed ingestion is enabled."""
     payload: dict[str, object] = {
         "status": "ok",
-        "incidents": len(state["incidents"]),
+        "incidents": len(state["incidents"]) + len(live_incidents),
         "debunked": len(state["debunked"]),
         "ai_mode": ai_mode(),
         "data_mode": "live" if ingestion_service is not None else "mock",

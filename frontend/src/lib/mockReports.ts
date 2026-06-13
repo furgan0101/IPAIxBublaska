@@ -35,6 +35,12 @@ export interface ConfidenceBreakdown {
   crossSourceConfirmation: number;
 }
 
+export interface RelatedIncident {
+  incident_id: string;
+  relation_type: "causal" | "spatial" | "sequel";
+  rationale: string;
+}
+
 export interface CrisisReport {
   id: string;
   title: string;
@@ -74,6 +80,10 @@ export interface CrisisReport {
   dispatchedAt?: string | null;
   /** Information discipline: raw intel (media, sources, snippets) is masked. */
   classified?: boolean;
+  /** Raw event-type key (e.g. "fire", "flood") — used for map icons. */
+  eventType?: string;
+  /** Causal or semantic links to other reports. */
+  related_incidents?: RelatedIncident[];
 }
 
 export const STATUS_META: Record<
@@ -125,6 +135,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "KN-0142",
     title: "Structure fire near Konstanz central station",
     crisisType: "Fire",
+    eventType: "fire",
     city: "Konstanz",
     coordinates: [47.6594, 9.1744],
     status: "relevant",
@@ -178,9 +189,42 @@ export const MOCK_REPORTS: CrisisReport[] = [
     dispatched: false,
   },
   {
+    id: "KN-0143",
+    title: "Traffic congestion at Station Square",
+    crisisType: "Traffic",
+    eventType: "traffic",
+    city: "Konstanz",
+    coordinates: [47.6599, 9.176],
+    status: "review",
+    confidence: 65,
+    riskLevel: "Low",
+    timestamp: minutesAgo(5),
+    aiSummary: "Multiple reports of heavy traffic and road blocks around the station area.",
+    locationConfidence: 95,
+    reasonForDecision: "Corroborated traffic disruption reports.",
+    breakdown: {
+      sourceReliability: 60,
+      locationMatch: 95,
+      mediaSupport: 30,
+      crossSourceConfirmation: 70,
+    },
+    evidenceLinks: [],
+    signalSnippet: "Stau am Bahnhofplatz, Polizei regelt den Verkehr.",
+    signalSource: "@kn_traffic · Social Media",
+    related_incidents: [
+      {
+        incident_id: "KN-0142",
+        relation_type: "causal",
+        rationale:
+          "Traffic congestion is a direct consequence of the nearby structure fire and emergency vehicle access.",
+      },
+    ],
+  },
+  {
     id: "S-0287",
     title: "Multi-vehicle accident on B14 arterial road",
     crisisType: "Traffic Accident",
+    eventType: "accident",
     city: "Stuttgart",
     coordinates: [48.7784, 9.18],
     status: "relevant",
@@ -229,6 +273,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "FR-0311",
     title: "Flooding on riverside road along the Dreisam",
     crisisType: "Flooding",
+    eventType: "flood",
     city: "Freiburg",
     coordinates: [47.992, 7.855],
     status: "review",
@@ -277,6 +322,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "KA-0193",
     title: "Clustered power-outage reports, Oststadt district",
     crisisType: "Power Outage",
+    eventType: "power_outage",
     city: "Karlsruhe",
     coordinates: [49.0098, 8.431],
     status: "relevant",
@@ -325,6 +371,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "MA-0356",
     title: "Unverified explosion rumour, Neckarstadt",
     crisisType: "Explosion Rumour",
+    eventType: "explosion",
     city: "Mannheim",
     coordinates: [49.4944, 8.466],
     status: "ignored",
@@ -366,6 +413,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "UL-0228",
     title: "Storm damage blocking road near the Münster",
     crisisType: "Storm Damage",
+    eventType: "storm",
     city: "Ulm",
     coordinates: [48.3994, 9.9916],
     status: "relevant",
@@ -414,6 +462,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "HD-0301",
     title: "Crowd panic rumour, Heidelberg old town",
     crisisType: "Crowd Incident Rumour",
+    eventType: "terror_attack",
     city: "Heidelberg",
     coordinates: [49.4122, 8.71],
     status: "ignored",
@@ -455,6 +504,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     id: "HN-0274",
     title: "Fallen tree on residential street, Heilbronn-Ost",
     crisisType: "Fallen Tree",
+    eventType: "storm",
     city: "Heilbronn",
     coordinates: [49.15, 9.22],
     status: "review",

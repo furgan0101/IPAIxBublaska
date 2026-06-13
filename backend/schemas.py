@@ -105,6 +105,14 @@ class SourceReport(BaseModel):
     ai_credibility: float | None = None
 
 
+class RelatedIncident(BaseModel):
+    """A causal or semantic link between two incidents."""
+
+    incident_id: str
+    relation_type: Literal["causal", "spatial", "sequel"]
+    rationale: str
+
+
 class VerifiedIncident(BaseModel):
     """A cluster of mutually corroborating reports promoted to a live incident."""
 
@@ -143,6 +151,9 @@ class VerifiedIncident(BaseModel):
     )
     sources: list[SourceReport] = Field(
         default_factory=list, description="Corroborating reports, chronological"
+    )
+    related_incidents: list[RelatedIncident] = Field(
+        default_factory=list, description="Causal or semantic links to other incidents"
     )
 
 
@@ -201,3 +212,41 @@ class SubmissionResult(BaseModel):
     incident_id: str | None = None
     confidence_score: float | None = None
     reason_flagged: str | None = None
+
+
+class DwdStatus(BaseModel):
+    """Current DWD weather warning summary."""
+
+    active: bool
+    level: int = 0
+    headline: str | None = None
+    description: str | None = None
+    timestamp: datetime | None = None
+    url: str = "https://www.dwd.de"
+    temperature: float | None = None
+
+
+class PegelStatus(BaseModel):
+    """Current water level (pegel) and warning summary."""
+
+    active: bool
+    station: str | None = None
+    water: str | None = None
+    value: float | None = None
+    unit: str | None = "cm"
+    timestamp: datetime | None = None
+    state: str | None = None
+    url: str = "https://www.hvz.baden-wuerttemberg.de"
+
+
+class MobiDataStatus(BaseModel):
+    """Traffic and construction warnings from MobiData BW."""
+
+    active: bool
+    count: int = 0
+    road: str | None = None
+    location: str | None = None
+    description: str | None = None
+    distance_km: float | None = None
+    url: str = "https://www.verkehrsinfo-bw.de"
+

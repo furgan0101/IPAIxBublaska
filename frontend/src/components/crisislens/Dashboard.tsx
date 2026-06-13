@@ -14,11 +14,11 @@ import {
 
 import {
   MOCK_REPORTS,
-  STATUS_META,
   type CrisisReport,
   type RiskLevel,
 } from "@/lib/mockReports";
 import { API_BASE } from "@/lib/types";
+import { confidenceColor } from "@/lib/confidence";
 import { adaptAll } from "@/lib/liveAdapter";
 import { firstSignalAt } from "@/lib/mediaResponse";
 import {
@@ -33,6 +33,9 @@ import { safeNewDate, timeAgo } from "@/lib/format";
 import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
+import DwdStatusTile from "./DwdStatusTile";
+import PegelStatusTile from "./PegelStatusTile";
+import MobiDataStatusTile from "./MobiDataStatusTile";
 import DetailPanel from "./DetailPanel";
 import ToastStack, { type DashboardToast } from "./ToastStack";
 import LageberichtPrint from "./LageberichtPrint";
@@ -54,36 +57,27 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ),
 });
 
-type DataMode = "live" | "mock" | "offline";
-
-const MODE_META: Record<
-  DataMode,
-  { label: string; chip: string; dot: string; ping: boolean }
-> = {
-  live: {
-    label: "Live Data",
-    chip: "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    dot: "bg-emerald-500",
-    ping: true,
-  },
-  mock: {
-    label: "Mock Data",
-    chip: "border-gold/40 bg-gold-fill/10 text-gold",
-    dot: "bg-gold-fill",
-    ping: false,
-  },
-  offline: {
-    label: "Offline Demo",
-    chip: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
-    dot: "bg-red-500",
-    ping: false,
-  },
-};
-
 interface DashboardProps {
   theme: "dark" | "light";
   onToggleTheme: () => void;
 }
+
+/** A jurisdiction the map is centred on; its name scopes the news feed. */
+interface RegionFocus {
+  name: string;
+  center: [number, number];
+}
+
+/** Where the live backend data is coming from (drives the header badge). */
+type DataMode = "live" | "mock" | "offline";
+
+// Demo default: the dashboard boots straight into the operator's jurisdiction
+// (Mannheim) with the industrial-fire scenario front and centre — no gate,
+// no modal. The wider Baden-Württemberg map stays fully populated underneath.
+const DEFAULT_REGION: RegionFocus = {
+  name: "Mannheim",
+  center: [49.4875, 8.466],
+};
 
 /** Main command-center view: map, stats, signal feed and report dossier. */
 export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
@@ -92,10 +86,12 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [minConfidence, setMinConfidence] = useState(1);
+  const [region, setRegion] = useState<RegionFocus | null>(DEFAULT_REGION);
+  const [feedOpen, setFeedOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [manualFocus, setManualFocus] = useState<MapFocus | null>(null);
-  const [feedOpen, setFeedOpen] = useState(true);
   const latestRequestQuery = useRef<string>("");
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, health, online, refresh } = useDashboard();
@@ -189,9 +185,16 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     [pushToast, refresh],
   );
 
+  // Map markers honour the header filters (event type + confidence) but NOT
+  // the selected region — the whole Baden-Württemberg picture stays visible.
+  // We filter to ONLY show incident clusters (not individual signals) on the map.
   const reports = useMemo(
     () => {
-      let filtered = allReports;
+      let filtered = allReports.filter(r => 
+        r.id.startsWith("INC-") || // live incidents
+        r.id.startsWith("RPT-") || // mock reports or direct injections
+        r.status === "ignored"     // debunked reports
+      );
       if (activeTag) {
         filtered = filtered.filter((r) => r.crisisType === activeTag);
       }
@@ -201,84 +204,58 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         const threshold = (minConfidence - 1) * 25;
         filtered = filtered.filter((r) => r.confidence >= threshold);
       }
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase();
-        filtered = filtered.filter(
-          (r) =>
-            r.city.toLowerCase().includes(q) ||
-            r.crisisType.toLowerCase().includes(q) ||
-            r.signalSnippet.toLowerCase().includes(q) ||
-            r.signalSource.toLowerCase().includes(q),
-        );
-      }
       return filtered;
     },
-    [allReports, activeTag, minConfidence, searchQuery],
+    [allReports, activeTag, minConfidence],
+  );
+
+  // All reports in the selected jurisdiction, before the header filters. The
+  // chips are built from this so every tag shown has at least one incident in
+  // the current region — clicking a tag never yields an empty feed.
+  const regionBase = useMemo(
+    () =>
+      region ? allReports.filter((r) => r.city === region.name) : allReports,
+    [allReports, region],
   );
 
   const tagCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    allReports.forEach((r) => {
+    regionBase.forEach((r) => {
       counts[r.crisisType] = (counts[r.crisisType] ?? 0) + 1;
     });
     return Object.entries(counts)
       .map(([tag, count]) => ({ tag, count }))
       .sort((a, b) => b.count - a.count);
-  }, [allReports]);
+  }, [regionBase]);
 
   const selected = useMemo(
     () => reports.find((r) => r.id === selectedId) ?? null,
     [reports, selectedId],
   );
 
-  // Command Mode scopes the entire dashboard — stats, feed, map — to one city.
+  // The map always plots the full board; the selected region only scopes the
+  // feed (and the Command-Mode tooling, which keys off focusCity).
   const scopedReports = useMemo(
     () =>
       focusCity ? reports.filter((r) => r.city === focusCity) : reports,
     [reports, focusCity],
   );
 
-  // Leave Command Mode automatically if the city drops off the board
-  // (live feeds can age incidents out between polls).
-  useEffect(() => {
-    if (focusCity && !reports.some((r) => r.city === focusCity)) {
-      setFocusCity(null);
-    }
-  }, [focusCity, reports]);
+  // The news feed is scoped to the selected jurisdiction (e.g. Mannheim).
+  const regionReports = useMemo(
+    () =>
+      region ? reports.filter((r) => r.city === region.name) : reports,
+    [reports, region],
+  );
 
-  const cityFocus = useMemo<MapFocus | null>(() => {
-    // 1. Manual map jump (from search)
-    if (manualFocus) return manualFocus;
-
-    // 2. Manual city focus (Command Mode)
-    if (focusCity && scopedReports.length > 0) {
-      const lat =
-        scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
-        scopedReports.length;
-      const lon =
-        scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
-        scopedReports.length;
-      return { center: [lat, lon], zoom: 12 };
-    }
-
-    // 3. Search results zoom
-    // If the user has typed something that filters the list, fly to the center of results.
-    const isSearching = searchQuery.trim().length >= 2;
-    if (isSearching && reports.length > 0) {
-      const lat =
-        reports.reduce((sum, r) => sum + r.coordinates[0], 0) / reports.length;
-      const lon =
-        reports.reduce((sum, r) => sum + r.coordinates[1], 0) / reports.length;
-
-      // If results are few or all in one city, zoom deep. Otherwise, overview.
-      const uniqueCities = new Set(reports.map((r) => r.city));
-      const zoom = (reports.length <= 3 || uniqueCities.size === 1) ? 14 : 10;
-
-      return { center: [lat, lon], zoom };
-    }
-
-    return null;
-  }, [focusCity, scopedReports, reports, searchQuery, manualFocus]);
+  // Centre the map on the selected region; a selected incident overrides this
+  // inside MapController.
+  const cityFocus = useMemo<MapFocus | null>(
+    () =>
+      manualFocus ??
+      (region ? { center: region.center, zoom: 14 } : null),
+    [manualFocus, region],
+  );
 
   const firstSignal = useMemo(
     () => (focusCity ? firstSignalAt(scopedReports) : null),
@@ -394,15 +371,73 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
 
   const feed = useMemo(
-    () =>
-      [...scopedReports].sort(
-        (a, b) =>
-          safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
-      ),
-    [scopedReports],
+    () => {
+      let base = region 
+        ? allReports.filter((r) => r.city === region.name)
+        : allReports;
+        
+      if (activeTag) {
+        base = base.filter((r) => r.crisisType === activeTag);
+      }
+      if (minConfidence > 1) {
+        const threshold = (minConfidence - 1) * 25;
+        base = base.filter((r) => r.confidence >= threshold);
+      }
+        
+      const sorted = [...base]
+        .sort(
+          (a, b) =>
+            safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
+        )
+        .slice(0, 150);
+
+      if (sorted.length > 0 && sorted.length % 2 === 0) {
+        return sorted.slice(0, sorted.length - 1);
+      }
+      return sorted;
+    },
+    [allReports, region, activeTag, minConfidence],
   );
 
-  const modeMeta = MODE_META[mode];
+  const popularSummary = useMemo(() => {
+    if (feed.length === 0) return null;
+
+    // Sort to find the highest-risk and highest-confidence report
+    const sortedBySeverity = [...feed].sort((a, b) => {
+      const aRiskVal = a.riskLevel === "High" ? 3 : a.riskLevel === "Moderate" ? 2 : 1;
+      const bRiskVal = b.riskLevel === "High" ? 3 : b.riskLevel === "Moderate" ? 2 : 1;
+      if (bRiskVal !== aRiskVal) return bRiskVal - aRiskVal;
+      return b.confidence - a.confidence;
+    });
+
+    const topReport = sortedBySeverity[0];
+    const highRiskCount = feed.filter((r) => r.riskLevel === "High").length;
+    const escalatedCount = feed.filter((r) => r.status === "relevant").length;
+
+    let text = "";
+    if (region) {
+      text = `Tracking ${feed.length} signals in the ${region.name} sector. `;
+      if (escalatedCount > 0) {
+        text += `${escalatedCount} alert${escalatedCount > 1 ? "s are" : " is"} escalated. `;
+      }
+      if (topReport) {
+        text += `The most critical is the ${topReport.crisisType} crisis, reported with a plausibility of ${topReport.confidence}%.`;
+      }
+    } else {
+      text = `Tracking ${feed.length} active signals across the Baden-Württemberg sector. `;
+      if (escalatedCount > 0) {
+        text += `${escalatedCount} alert${escalatedCount > 1 ? "s are" : " is"} escalated. `;
+      }
+      if (topReport) {
+        text += `The most critical is the ${topReport.crisisType} crisis in ${topReport.city} with a plausibility of ${topReport.confidence}%.`;
+      }
+    }
+
+    return {
+      text,
+      topReport,
+    };
+  }, [feed, region]);
 
   return (
     <>
@@ -423,6 +458,22 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <DwdStatusTile
+            locationName={region?.name ?? null}
+            lat={region?.center?.[0] ?? null}
+            lon={region?.center?.[1] ?? null}
+          />
+          <PegelStatusTile
+            locationName={region?.name ?? null}
+            lat={region?.center?.[0] ?? null}
+            lon={region?.center?.[1] ?? null}
+          />
+          <MobiDataStatusTile
+            locationName={region?.name ?? null}
+            lat={region?.center?.[0] ?? null}
+            lon={region?.center?.[1] ?? null}
+          />
+          
           {selected && (
             <button
               type="button"
@@ -462,6 +513,18 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         setActiveTag={setActiveTag}
         minConfidence={minConfidence}
         setMinConfidence={setMinConfidence}
+        regionName={region?.name ?? null}
+        onSelectCity={(hit) => {
+          setSelectedId(null);
+          setActiveTag(null); // a tag from the previous region may not exist here
+          setRegion({ name: hit.name, center: hit.center });
+          setHasSearched(true);
+        }}
+        onClearRegion={() => {
+          setActiveTag(null);
+          setRegion(null);
+          setHasSearched(false);
+        }}
       />
 
       {/* -------------------------------------------- command mode banner */}
@@ -495,19 +558,58 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </div>
 
           <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
+            {popularSummary && (
+              <div className="mb-3 rounded-lg border border-border bg-card p-3 shadow-sm relative overflow-hidden">
+                {/* Subtle top indicator bar */}
+                <div className="absolute top-0 left-0 right-0 h-1 bg-destructive" />
+                
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive"></span>
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
+                      Top Region Alert
+                    </span>
+                  </div>
+                  {popularSummary.topReport.riskLevel === "High" && (
+                    <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-destructive">
+                      High Risk
+                    </span>
+                  )}
+                </div>
+
+                <h3 className="text-xs font-bold text-foreground line-clamp-1">
+                  {popularSummary.topReport.title}
+                </h3>
+                
+                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+                  {popularSummary.text}
+                </p>
+
+                <div className="mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => selectIncident(popularSummary.topReport.id)}
+                    className="w-full rounded border border-border/80 bg-muted/40 hover:bg-muted py-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors cursor-pointer"
+                  >
+                    Investigate Alert
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
               <ReportTimeline reports={feed} />
             </div>
             {feed.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
-                No signals in the current window yet — the pipeline is polling
-                live sources. Trigger a cycle via{" "}
-                <span className="font-mono">POST /api/poll</span>.
+                No current news{region ? ` for ${region.name}` : ""}.
               </p>
             ) : (
               <ul className="space-y-2">
                 {feed.map((report) => {
-                  const meta = STATUS_META[report.status];
                   const isSelected = report.id === selectedId;
                   return (
                     <li key={report.id}>
@@ -522,7 +624,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                       >
                         <span className="flex items-center gap-2">
                           <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${meta.dot}`}
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: confidenceColor(report.confidence) }}
                             aria-hidden
                           />
                           <span className="truncate text-xs font-semibold text-foreground">
@@ -571,6 +674,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onSelect={selectIncident}
             theme={theme}
             focus={cityFocus}
+            hasSearched={hasSearched}
             measures={focusCity ? measures : []}
             armedTool={armedTool}
             selectedMeasureId={selectedMeasureId}
@@ -651,6 +755,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                             center: [data.lat, data.lon],
                             zoom: 14,
                           });
+                          setHasSearched(true);
                         }
                       } catch (err) {
                         console.error("Search geocoding failed", err);

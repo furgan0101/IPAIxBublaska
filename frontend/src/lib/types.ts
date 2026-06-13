@@ -16,6 +16,14 @@ export interface SourceReport {
   ai_rationale?: string | null;
   /** AI note on whether the media matches the claim (vision mode). */
   ai_media_note?: string | null;
+  /** AI analyst's own 0-1 credibility score (live AI mode only). */
+  ai_credibility?: number | null;
+}
+
+export interface RelatedIncident {
+  incident_id: string;
+  relation_type: "causal" | "spatial" | "sequel";
+  rationale: string;
 }
 
 export interface SOPTask {
@@ -30,6 +38,7 @@ export interface VerifiedIncident {
   lat: number;
   lon: number;
   confidence_score: number;
+  ai_credibility?: number | null;
   source_ids: string[];
   report_count: number;
   first_seen: string;
@@ -46,6 +55,7 @@ export interface VerifiedIncident {
   /** Itemized SOP checklist for responders. */
   sop_tasks: SOPTask[];
   sources: SourceReport[];
+  related_incidents?: RelatedIncident[];
 }
 
 export interface DebunkedReport {
@@ -85,6 +95,37 @@ export interface HealthInfo {
   ai_mode: "mock" | "live-ready" | "live";
   /** "live" when real-feed ingestion (FEEDS_ENABLED) is active. */
   data_mode?: "mock" | "live";
+}
+
+export interface DwdStatus {
+  active: boolean;
+  level: number;
+  headline?: string | null;
+  description?: string | null;
+  timestamp?: string | null;
+  url: string;
+  temperature?: number | null;
+}
+
+export interface PegelStatus {
+  active: boolean;
+  station?: string | null;
+  water?: string | null;
+  value?: number | null;
+  unit?: string | null;
+  timestamp?: string | null;
+  state?: string | null;
+  url: string;
+}
+
+export interface MobiDataStatus {
+  active: boolean;
+  count: number;
+  road?: string | null;
+  location?: string | null;
+  description?: string | null;
+  distance_km?: number | null;
+  url: string;
 }
 
 /** FastAPI backend base URL (override via NEXT_PUBLIC_API_URL). */
