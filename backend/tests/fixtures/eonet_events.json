@@ -1,0 +1,110 @@
+{
+  "title": "EONET Events",
+  "description": "Natural events from EONET.",
+  "link": "https://eonet.gsfc.nasa.gov/api/v3/events",
+  "events": [
+    {
+      "id": "EONET_14001",
+      "title": "Wildfire - Plumas County, California",
+      "description": null,
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_14001",
+      "closed": null,
+      "categories": [
+        { "id": "wildfires", "title": "Wildfires" }
+      ],
+      "sources": [
+        { "id": "PH", "url": "https://firms.modaps.eosdis.nasa.gov/" }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": null,
+          "magnitudeUnit": null,
+          "date": "2026-06-10T12:00:00Z",
+          "type": "Point",
+          "coordinates": [-120.85, 40.12]
+        },
+        {
+          "magnitudeValue": null,
+          "magnitudeUnit": null,
+          "date": "2026-06-12T12:00:00Z",
+          "type": "Point",
+          "coordinates": [-120.91, 40.18]
+        }
+      ]
+    },
+    {
+      "id": "EONET_14002",
+      "title": "Tropical Storm Six",
+      "description": null,
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_14002",
+      "closed": null,
+      "categories": [
+        { "id": "severeStorms", "title": "Severe Storms" }
+      ],
+      "sources": [
+        { "id": "JTWC", "url": "https://www.metoc.navy.mil/jtwc/jtwc.html" }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": 35.0,
+          "magnitudeUnit": "kts",
+          "date": "2026-06-12T18:00:00Z",
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [128.0, 14.0],
+              [130.0, 14.0],
+              [130.0, 16.0],
+              [128.0, 16.0],
+              [128.0, 14.0]
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "EONET_14003",
+      "title": "Floods - Assam, India",
+      "description": null,
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_14003",
+      "closed": null,
+      "categories": [
+        { "id": "floods", "title": "Floods" }
+      ],
+      "sources": [
+        { "id": "GDACS", "url": "https://www.gdacs.org/" }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": null,
+          "magnitudeUnit": null,
+          "date": "2026-06-11T06:30:00Z",
+          "type": "Point",
+          "coordinates": [92.93, 26.20]
+        }
+      ]
+    },
+    {
+      "id": "EONET_14004",
+      "title": "Volcano - Sangay",
+      "description": null,
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_14004",
+      "closed": null,
+      "categories": [
+        { "id": "volcanoes", "title": "Volcanoes" }
+      ],
+      "sources": [
+        { "id": "SIVolcano", "url": "https://volcano.si.edu/" }
+      ],
+      "geometry": [
+        {
+          "magnitudeValue": null,
+          "magnitudeUnit": null,
+          "date": "2026-06-12T09:00:00Z",
+          "type": "Point",
+          "coordinates": [-78.34, -2.00]
+        }
+      ]
+    }
+  ]
+}

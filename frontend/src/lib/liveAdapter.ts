@@ -5,6 +5,7 @@
  */
 import { eventMeta } from "@/lib/eventMeta";
 import { getWorkingUrl } from "@/lib/urls";
+import { blendConfidence } from "@/lib/confidence";
 import type {
   Credibility,
   CrisisReport,
@@ -24,10 +25,23 @@ const SOURCE_TYPE: Record<string, SourceType> = {
   telegram: "Social Media",
   presseportal: "Local News",
   nina: "Weather Alert",
+  dwd: "Weather Alert",
+  pegelonline: "Weather Alert",
+  usgs: "Weather Alert",
+  eonet: "Weather Alert",
+  gdacs: "Weather Alert",
 };
 
-/** Authority-verified channels (federal warnings, police newsroom). */
-const OFFICIAL_SOURCES = new Set(["nina", "presseportal"]);
+/** Authority-verified channels: federal/official monitoring + agency feeds. */
+const OFFICIAL_SOURCES = new Set([
+  "nina",
+  "presseportal",
+  "dwd",
+  "pegelonline",
+  "usgs",
+  "eonet",
+  "gdacs",
+]);
 
 const RISK_BY_SEVERITY: Record<string, RiskLevel> = {
   high: "High",
@@ -73,6 +87,9 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
   const hasOfficial = incident.sources.some((s) =>
     OFFICIAL_SOURCES.has(s.source),
   );
+  const officialCount = incident.sources.filter((s) =>
+    OFFICIAL_SOURCES.has(s.source),
+  ).length;
   const rationales = incident.sources
     .map((s) => s.ai_rationale)
     .filter((x): x is string => Boolean(x));
@@ -97,7 +114,12 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     city: "Konstanz sector",
     coordinates: [incident.lat, incident.lon],
     status,
-    confidence: Math.round(incident.confidence_score * 100),
+    confidence: blendConfidence({
+      verdict: "verified",
+      corroboration: incident.confidence_score,
+      reportCount: incident.report_count,
+      officialCount,
+    }),
     riskLevel: RISK_BY_SEVERITY[incident.severity] ?? "Low",
     timestamp: incident.last_seen,
     aiSummary:
@@ -140,7 +162,10 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
     city: "Konstanz sector",
     coordinates: [report.lat, report.lon],
     status: "ignored",
-    confidence: Math.round(report.credibility_score * 100),
+    confidence: blendConfidence({
+      verdict: "debunked",
+      credibility: report.credibility_score,
+    }),
     riskLevel: "Low",
     timestamp: report.timestamp,
     aiSummary: report.rationale ?? report.reason_flagged,

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#" xmlns:gdacs="http://www.gdacs.org" xmlns:georss="http://www.georss.org/georss" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>GDACS RSS information</title>
+    <link>https://www.gdacs.org/</link>
+    <copyright>public domain</copyright>
+    <description>Near real-time notification about natural disaster with a potential humanitarian impact</description>
+    <pubDate>Fri, 12 Jun 2026 23:55:02 GMT</pubDate>
+    <atom:link href="https://www.gdacs.org/xml/rss.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Green flood alert in Tuerkiye</title>
+      <description>On 28/06/2026, a flood started in Tuerkiye, lasting until 30/06/2026 (last update). The flood caused 0 deaths and 0 displaced .</description>
+      <link>https://www.gdacs.org/report.aspx?eventtype=FL&amp;eventid=1103920</link>
+      <pubDate>Tue, 02 Jun 2026 05:45:56 GMT</pubDate>
+      <guid isPermaLink="false">FL1103920</guid>
+      <geo:Point><geo:lat>37.2401223</geo:lat><geo:long>36.4534072</geo:long></geo:Point>
+      <georss:point>37.2401223 36.4534072</georss:point>
+      <gdacs:eventtype>FL</gdacs:eventtype>
+      <gdacs:alertlevel>Green</gdacs:alertlevel>
+      <gdacs:eventid>1103920</gdacs:eventid>
+      <gdacs:country>Tuerkiye</gdacs:country>
+    </item>
+    <item>
+      <title>Green earthquake (Magnitude 5.5M, Depth:10km) in Chile 11/06/2026 12:22 UTC, 6 thousand in MMI IV.</title>
+      <description>On 6/11/2026 12:22:06 PM, an earthquake occurred in Chile potentially affecting 6 thousand in MMI IV. The earthquake had Magnitude 5.5M, Depth:10km.</description>
+      <link>https://www.gdacs.org/report.aspx?eventtype=EQ&amp;eventid=1545654</link>
+      <pubDate>Thu, 11 Jun 2026 12:40:57 GMT</pubDate>
+      <guid isPermaLink="false">EQ1545654</guid>
+      <georss:point>-27.8038 -71.7406</georss:point>
+      <gdacs:eventtype>EQ</gdacs:eventtype>
+      <gdacs:alertlevel>Green</gdacs:alertlevel>
+      <gdacs:eventid>1545654</gdacs:eventid>
+      <gdacs:country>Chile</gdacs:country>
+    </item>
+    <item>
+      <title>Green notification for tropical cyclone CRISTINA-26. Population affected by Category 1 (120 km/h) wind speeds or higher is 0 (0 in Tropical Storm).</title>
+      <description>From 08/06/2026 to 11/06/2026, a Tropical Depression (maximum wind speed of 74 km/h) CRISTINA-26 was active in Atlantic. The cyclone affects these countries: Honduras, El Salvador, Nicaragua (vulnerability High).</description>
+      <link>https://www.gdacs.org/report.aspx?eventtype=TC&amp;eventid=1001275</link>
+      <pubDate>Mon, 08 Jun 2026 15:21:42 GMT</pubDate>
+      <guid isPermaLink="false">TC1001275</guid>
+      <georss:point>13.2 -89.1</georss:point>
+      <gdacs:eventtype>TC</gdacs:eventtype>
+      <gdacs:alertlevel>Green</gdacs:alertlevel>
+      <gdacs:eventid>1001275</gdacs:eventid>
+      <gdacs:country>Honduras</gdacs:country>
+    </item>
+    <item>
+      <title>Drought is on going in Australia</title>
+      <description>The  Drought notification level is Green.</description>
+      <link>https://www.gdacs.org/report.aspx?eventtype=DR&amp;eventid=1018457</link>
+      <pubDate>Thu, 30 Apr 2026 13:07:38 GMT</pubDate>
+      <guid isPermaLink="false">DR1018457</guid>
+      <georss:point>-30.414 150.973</georss:point>
+      <gdacs:eventtype>DR</gdacs:eventtype>
+      <gdacs:alertlevel>Green</gdacs:alertlevel>
+      <gdacs:eventid>1018457</gdacs:eventid>
+      <gdacs:country>Australia</gdacs:country>
+    </item>
+  </channel>
+</rss>

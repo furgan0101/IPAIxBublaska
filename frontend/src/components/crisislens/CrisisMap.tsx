@@ -7,6 +7,12 @@ import "leaflet/dist/leaflet.css";
 
 import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
 import { MEASURE_KINDS, type PlacedMeasure, type MeasureKind } from "@/lib/measures";
+import {
+  BAND_COLORS,
+  confidenceBand,
+  confidenceOpacity,
+  type ConfidenceBand,
+} from "@/lib/confidence";
 
 /** Overview framing for the Baden-Württemberg sector. */
 const BW_CENTER: [number, number] = [48.62, 9.05];
@@ -164,15 +170,14 @@ export default function CrisisMap({
 }: CrisisMapProps) {
   const selected = reports.find((r) => r.id === selectedId) ?? null;
 
-  // Six icons total (3 statuses × selected/unselected) — build once.
+  // Ten icons (5 confidence bands x selected/unselected), built once. Pin
+  // colour now tracks confidence instead of a single status colour.
   const icons = useMemo(() => {
     const map = new Map<string, L.DivIcon>();
-    (Object.keys(STATUS_META) as (keyof typeof STATUS_META)[]).forEach(
-      (status) => {
-        map.set(`${status}-false`, nodeIcon(STATUS_META[status].color, false));
-        map.set(`${status}-true`, nodeIcon(STATUS_META[status].color, true));
-      },
-    );
+    (Object.keys(BAND_COLORS) as ConfidenceBand[]).forEach((band) => {
+      map.set(`${band}-false`, nodeIcon(BAND_COLORS[band], false));
+      map.set(`${band}-true`, nodeIcon(BAND_COLORS[band], true));
+    });
     return map;
   }, []);
 
@@ -200,7 +205,10 @@ export default function CrisisMap({
           <Marker
             key={`${report.id}-${isSelected}`}
             position={report.coordinates}
-            icon={icons.get(`${report.status}-${isSelected}`)}
+            icon={icons.get(
+              `${confidenceBand(report.confidence)}-${isSelected}`,
+            )}
+            opacity={confidenceOpacity(report.confidence)}
             zIndexOffset={isSelected ? 1000 : 0}
             eventHandlers={{ click: () => onSelect(report.id) }}
           >

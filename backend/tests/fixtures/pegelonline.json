@@ -1,0 +1,86 @@
+[
+  {
+    "uuid": "aa97c894-ed26-4fdd-945f-db9667979268",
+    "number": "587560",
+    "shortname": "PLAUE OP",
+    "longname": "PLAUE OP",
+    "km": 67.8,
+    "agency": "STANDORT BRANDENBURG",
+    "longitude": 12.393022,
+    "latitude": 52.402702,
+    "water": {
+      "shortname": "UHW",
+      "longname": "UNTERE HAVEL-WASSERSTRASSE"
+    },
+    "timeseries": [
+      {
+        "shortname": "W",
+        "longname": "WASSERSTAND ROHDATEN",
+        "unit": "cm",
+        "equidistance": 15,
+        "currentMeasurement": {
+          "timestamp": "2026-06-13T01:45:00+02:00",
+          "value": 97.0,
+          "stateMnwMhw": "high",
+          "stateNswHsw": "unknown"
+        }
+      }
+    ]
+  },
+  {
+    "uuid": "b475386c-30cc-453a-b3b7-1d17ace13595",
+    "number": "48300105",
+    "shortname": "CELLE",
+    "longname": "CELLE",
+    "km": 1.74,
+    "agency": "VERDEN",
+    "longitude": 10.062164,
+    "latitude": 52.622706,
+    "water": {
+      "shortname": "ALLER",
+      "longname": "ALLER"
+    },
+    "timeseries": [
+      {
+        "shortname": "W",
+        "longname": "WASSERSTAND ROHDATEN",
+        "unit": "cm",
+        "equidistance": 15,
+        "currentMeasurement": {
+          "timestamp": "2026-06-13T01:45:00+02:00",
+          "value": 131.0,
+          "stateMnwMhw": "normal",
+          "stateNswHsw": "normal"
+        }
+      }
+    ]
+  },
+  {
+    "uuid": "11111111-2222-3333-4444-555555555555",
+    "number": "10042000",
+    "shortname": "PASSAU DONAU",
+    "longname": "PASSAU DONAU",
+    "km": 2226.7,
+    "agency": "REGENSBURG",
+    "longitude": 13.4667,
+    "latitude": 48.5746,
+    "water": {
+      "shortname": "DONAU",
+      "longname": "DONAU"
+    },
+    "timeseries": [
+      {
+        "shortname": "W",
+        "longname": "WASSERSTAND ROHDATEN",
+        "unit": "cm",
+        "equidistance": 15,
+        "currentMeasurement": {
+          "timestamp": "2026-06-13T01:30:00+02:00",
+          "value": 742.0,
+          "stateMnwMhw": "high",
+          "stateNswHsw": "veryhigh"
+        }
+      }
+    ]
+  }
+]

@@ -76,6 +76,12 @@ class IngestionSettings:
     nominatim_enabled: bool
     request_timeout_s: float
     user_agent: str
+    # Opt-in open-data connectors (keyless, pre-geocoded; off by default so the
+    # Konstanz demo and the offline tests are unaffected).
+    pegelonline_enabled: bool = False
+    usgs_enabled: bool = False
+    eonet_enabled: bool = False
+    gdacs_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "IngestionSettings":
@@ -105,4 +111,8 @@ class IngestionSettings:
                 "FEEDS_USER_AGENT",
                 "VOSTbw-OSINT-Dashboard/0.3 (hackathon demo; situational awareness)",
             ),
+            pegelonline_enabled=_flag("PEGELONLINE_ENABLED", default=False),
+            usgs_enabled=_flag("USGS_ENABLED", default=False),
+            eonet_enabled=_flag("EONET_ENABLED", default=False),
+            gdacs_enabled=_flag("GDACS_ENABLED", default=False),
         )

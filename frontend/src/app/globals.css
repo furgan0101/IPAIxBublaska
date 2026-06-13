@@ -301,3 +301,37 @@ body {
   cursor: pointer;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+
+/* ----------------------------------------------- performance pass (additive)
+   Appended by branch feature/sources-confidence-perf. Additive only: no
+   existing class/keyframe is renamed or removed. See MERGE_NOTES.md. */
+
+/* Compositor hint for the one ring emphasised at a time (cheap, bounded). */
+.cl-node--selected .cl-node-ring {
+  will-change: transform, opacity;
+}
+
+/* Opt-in GPU hint for elements that are actively transitioning. */
+.cl-gpu {
+  will-change: transform, opacity;
+}
+
+/* Skip layout + paint for long off-screen list rows. Apply by adding
+   class "cl-virtualise" to each row (e.g. the news-feed items). */
+.cl-virtualise {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 96px;
+}
+
+/* Accessibility + battery: honour the OS "reduce motion" setting everywhere,
+   including the infinite pin pulses, which previously ran unconditionally. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

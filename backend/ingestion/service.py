@@ -34,6 +34,10 @@ from ingestion.dwd import DwdConnector
 from ingestion.mastodon import MastodonConnector
 from ingestion.nina import NinaConnector
 from ingestion.presseportal import PresseportalConnector
+from ingestion.pegelonline import PegelonlineConnector
+from ingestion.usgs import UsgsConnector
+from ingestion.eonet import EonetConnector
+from ingestion.gdacs import GdacsConnector
 from ingestion.storage import FeedStore, StoredReport, content_hash
 from logic.geospatial import cluster_reports
 from logic.guidance import action_hint
@@ -52,6 +56,10 @@ ID_PREFIXES: dict[str, str] = {
     "presseportal": "POL",
     "mastodon": "MSTDN",
     "dwd": "DWD",
+    "pegelonline": "PEGEL",
+    "usgs": "USGS",
+    "eonet": "EONET",
+    "gdacs": "GDACS",
 }
 
 #: Official channels lift the cluster confidence to at least this floor —
@@ -60,6 +68,10 @@ OFFICIAL_CONFIDENCE_FLOOR: dict[str, float] = {
     "nina": 0.90,
     "presseportal": 0.80,
     "dwd": 0.90,
+    "pegelonline": 0.90,
+    "usgs": 0.85,
+    "eonet": 0.85,
+    "gdacs": 0.85,
 }
 
 DEBUNKED_LIMIT: int = 60
@@ -71,12 +83,22 @@ _PAREN_HINT_RE: re.Pattern[str] = re.compile(r"\(([^)]{3,80})\)")
 
 
 def default_connectors(settings: IngestionSettings) -> list[Connector]:
-    return [
+    connectors: list[Connector] = [
         NinaConnector(settings),
         PresseportalConnector(settings),
         MastodonConnector(settings),
         DwdConnector(settings),
     ]
+    # Opt-in keyless open-data connectors (off unless enabled in backend/.env).
+    if settings.pegelonline_enabled:
+        connectors.append(PegelonlineConnector(settings))
+    if settings.usgs_enabled:
+        connectors.append(UsgsConnector(settings))
+    if settings.eonet_enabled:
+        connectors.append(EonetConnector(settings))
+    if settings.gdacs_enabled:
+        connectors.append(GdacsConnector(settings))
+    return connectors
 
 
 @dataclass
