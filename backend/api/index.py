@@ -1,14 +1,9 @@
 """Vercel Python serverless entrypoint.
 
-Vercel's Python runtime looks for a callable named `app` (ASGI) or `handler`
-(WSGI) in api/index.py.  We re-export the FastAPI app from main.py directly.
+Vercel runs this file with the backend root as the working directory, so
+`main` is importable directly. The runtime looks for an ASGI callable
+named `app`.
 """
-import sys
-import os
-
-# Make the backend root importable (main.py, schemas.py, logic/, ingestion/).
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from main import app  # noqa: E402 — path manipulation must come first
+from main import app  # noqa: F401
 
 __all__ = ["app"]
