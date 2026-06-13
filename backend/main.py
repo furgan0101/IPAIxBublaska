@@ -392,7 +392,93 @@ async def fetch_dynamic_live_alerts(q: str, lat: float, lon: float) -> list[Veri
     except Exception as e:
         logging.warning("Failed to fetch dynamic PEGELONLINE warnings: %s", e)
 
+    # 4. Mastodon public search — recent toots mentioning the queried city
+    CRISIS_KEYWORDS = [
+        "unfall", "brand", "feuer", "sperrung", "warnung", "hochwasser",
+        "überschwemmung", "explosion", "gefahr", "notfall", "evakuierung",
+        "feuerwehr", "rettung", "katastrophe", "unwetter", "stromausfall",
+        "accident", "fire", "flood", "warning", "evacuation", "emergency",
+    ]
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get(
+                "https://mastodon.social/api/v2/search",
+                params={
+                    "q": q,
+                    "type": "statuses",
+                    "limit": 20,
+                    "resolve": "false",
+                },
+                headers={"Accept": "application/json"},
+            )
+            if res.status_code == 200:
+                statuses = res.json().get("statuses") or []
+                for idx, status in enumerate(statuses):
+                    # Strip HTML tags from the content
+                    import re as _re
+                    raw_content = status.get("content") or ""
+                    text = _re.sub(r"<[^>]+>", " ", raw_content).strip()
+                    text = _re.sub(r"\s+", " ", text)
+                    if not text:
+                        continue
+
+                    # Only include posts that contain at least one crisis keyword
+                    text_lower = text.lower()
+                    if not any(kw in text_lower for kw in CRISIS_KEYWORDS):
+                        continue
+
+                    account = status.get("account") or {}
+                    author = account.get("acct") or account.get("username") or "mastodon"
+                    post_url = status.get("url") or "https://mastodon.social"
+                    media_url = None
+                    for attachment in status.get("media_attachments") or []:
+                        if attachment.get("type") in ("image", "gifv"):
+                            media_url = attachment.get("preview_url") or attachment.get("url")
+                            break
+
+                    created_str = status.get("created_at") or datetime.now(timezone.utc).isoformat()
+                    try:
+                        timestamp = datetime.fromisoformat(created_str.replace("Z", "+00:00"))
+                    except Exception:
+                        timestamp = datetime.now(timezone.utc)
+
+                    status_id = status.get("id") or f"{idx}"
+                    inc_id = f"INC-LIVE-MASTO-{status_id}"
+                    src = SourceReport(
+                        id=f"RPT-LIVE-MASTO-{status_id}",
+                        source="mastodon",
+                        author=f"@{author}",
+                        text=text[:400],
+                        timestamp=timestamp,
+                        url=post_url,
+                        media_preview=media_url,
+                        ai_rationale=f"Public Mastodon post mentioning {q} with crisis-related keywords.",
+                        ai_media_note=None,
+                        ai_credibility=0.5,
+                    )
+                    incident = VerifiedIncident(
+                        id=inc_id,
+                        event_type="accident",
+                        lat=lat + (idx * 0.001),
+                        lon=lon + (idx * 0.001),
+                        confidence_score=0.5,
+                        ai_credibility=0.5,
+                        source_ids=[src.id],
+                        report_count=1,
+                        first_seen=timestamp,
+                        last_seen=timestamp,
+                        summary=text[:120],
+                        severity="low",
+                        action_hint="Social-media signal — verify with official sources before actioning.",
+                        sources=[src],
+                        related_incidents=[],
+                    )
+                    incidents.append(incident)
+    except Exception as e:
+        logging.warning("Failed to fetch Mastodon posts: %s", e)
+
     return incidents
+
 
 
 def reset_state() -> None:
