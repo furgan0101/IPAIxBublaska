@@ -55,6 +55,8 @@ export interface CrisisReport {
   /** ISO timestamp of the most recent signal. */
   timestamp: string;
   aiSummary: string;
+  /** Recommended responder action (narrative hint, own dossier block). */
+  actionHint?: string | null;
   /** 0–100. */
   locationConfidence: number;
   reasonForDecision: string;
@@ -122,86 +124,6 @@ function minutesAgo(minutes: number): string {
 
 export const MOCK_REPORTS: CrisisReport[] = [
   {
-    id: "KN-0142",
-    title: "Structure fire near Konstanz central station",
-    crisisType: "Fire",
-    eventType: "fire",
-    city: "Konstanz",
-    coordinates: [47.6594, 9.1744],
-    status: "relevant",
-    confidence: 82,
-    riskLevel: "High",
-    timestamp: minutesAgo(8),
-    aiSummary:
-      "Three independent sources describe visible smoke and open flames in a commercial building directly north of Konstanz central station. Photo metadata is consistent with the reported time window, and fire-service activity increased in the same period. Plausibility is high — evidence-based escalation recommended, pending confirmation by the duty officer.",
-    locationConfidence: 91,
-    reasonForDecision:
-      "Escalated: three independent sources inside a 0.8 km / 22 min window, capture metadata consistent with report times, and corroborating fire-service activity. Human confirmation still required before any operational response.",
-    breakdown: {
-      sourceReliability: 84,
-      locationMatch: 91,
-      mediaSupport: 78,
-      crossSourceConfirmation: 88,
-    },
-    evidenceLinks: [
-      {
-        sourceType: "Local News",
-        title: "Südkurier live ticker: Rauchentwicklung am Hauptbahnhof",
-        time: minutesAgo(6),
-        credibility: "high",
-        href: "#",
-      },
-      {
-        sourceType: "Social Media",
-        title: "@bodensee_spotter: Flammen im Dachstuhl sichtbar",
-        time: minutesAgo(9),
-        credibility: "medium",
-        href: "#",
-      },
-      {
-        sourceType: "Citizen Report",
-        title: "Warn-app report: strong smell of smoke, Bahnhofplatz",
-        time: minutesAgo(12),
-        credibility: "medium",
-        href: "#",
-      },
-    ],
-    signalSnippet:
-      "Rauchsäule über dem Bahnhofsviertel sichtbar, Löschzug im Anmarsch …",
-    signalSource: "@bodensee_spotter · Social Media",
-    },
-    {
-    id: "KN-0143",
-    title: "Traffic congestion at Station Square",
-    crisisType: "Traffic",
-    eventType: "traffic",
-    city: "Konstanz",
-    coordinates: [47.6599, 9.176],
-    status: "review",
-    confidence: 65,
-    riskLevel: "Low",
-    timestamp: minutesAgo(5),
-    aiSummary: "Multiple reports of heavy traffic and road blocks around the station area.",
-    locationConfidence: 95,
-    reasonForDecision: "Corroborated traffic disruption reports.",
-    breakdown: {
-      sourceReliability: 60,
-      locationMatch: 95,
-      mediaSupport: 30,
-      crossSourceConfirmation: 70,
-    },
-    evidenceLinks: [],
-    signalSnippet: "Stau am Bahnhofplatz, Polizei regelt den Verkehr.",
-    signalSource: "@kn_traffic · Social Media",
-    related_incidents: [
-      {
-        incident_id: "KN-0142",
-        relation_type: "causal",
-        rationale: "Traffic congestion is a direct consequence of the nearby structure fire and emergency vehicle access."
-      }
-    ]
-    },
-    {
     id: "UL-0288",
 
     title: "Multi-vehicle accident on B14 arterial road",
@@ -215,6 +137,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     timestamp: minutesAgo(14),
     aiSummary:
       "Two corroborating reports describe a multi-vehicle collision blocking the B14 near the city centre. A traffic-camera still matches the described lane closure, and flow data shows a sudden speed drop on the same segment. Escalated for dispatcher awareness; injury status unconfirmed.",
+    actionHint: "Dispatch traffic police and coordinate lane clearance",
     locationConfidence: 88,
     reasonForDecision:
       "Escalated: independent social and citizen reports agree on segment and direction of travel; public traffic-flow data corroborates a sudden obstruction at the reported position.",
@@ -264,6 +187,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     timestamp: minutesAgo(23),
     aiSummary:
       "Reports describe water across the carriageway on the Dreisam riverside road after sustained rainfall. Imagery is plausible but could not be independently dated, and the two available sources partially overlap. Routed to human review before any escalation.",
+    actionHint: "Monitor water levels and prepare for road closures",
     locationConfidence: 72,
     reasonForDecision:
       "Human review required: river-gauge data shows elevated but below-threshold levels, and the media evidence could not be independently dated. Plausible, not yet corroborated.",
@@ -313,6 +237,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     timestamp: minutesAgo(31),
     aiSummary:
       "A tight cluster of outage reports from the Oststadt district coincides with the grid operator's public fault map showing a medium-voltage disturbance. Escalated for situational awareness; scope, cause and restoration time remain unconfirmed.",
+    actionHint: "Alert utility crews and monitor critical infrastructure",
     locationConfidence: 83,
     reasonForDecision:
       "Escalated: independent reports form a tight spatial cluster that matches the operator's published fault polygon. No imagery available, but source agreement is strong.",
@@ -362,6 +287,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     timestamp: minutesAgo(47),
     aiSummary:
       "A single account claims an explosion in Neckarstadt. The attached video matches archive footage from a 2019 event in another city, and no other source reports unusual activity in the area. Ignored due to insufficient corroboration; will be re-evaluated automatically if new signals arrive.",
+    actionHint: "Verify report with local emergency services",
     locationConfidence: 34,
     reasonForDecision:
       "Ignored due to insufficient corroboration: recycled footage (reverse-image match, 2019), no second source, and the posting account was created three days ago with a bot-like activity pattern.",
@@ -404,6 +330,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     timestamp: minutesAgo(38),
     aiSummary:
       "Multiple sources report a toppled construction barrier and large branches blocking an access road after a squall line crossed Ulm. The reports are consistent with the gust warning active at the time. Escalated so road clearance can be coordinated; no injuries reported so far.",
+    actionHint: "Dispatch road clearance and forestry teams",
     locationConfidence: 86,
     reasonForDecision:
       "Escalated: cross-source confirmation from an official weather warning, citizen photos and a local-news ticker; photo capture times fall inside the squall window.",
@@ -453,6 +380,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     timestamp: minutesAgo(52),
     aiSummary:
       "Two forum posts claim a crowd panic near the old town. Public webcams show normal pedestrian flow during the claimed window, and neither news nor official channels reflect the claim. Ignored due to insufficient corroboration.",
+    actionHint: "Monitor social media and official channels",
     locationConfidence: 41,
     reasonForDecision:
       "Ignored due to insufficient corroboration: directly contradicted by public webcam imagery from the claimed location and time; no official, news or social source reflects the claim.",
@@ -481,41 +409,6 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSnippet:
       "Angeblich Massenpanik in der Hauptstraße — \"alle rennen\", keine Quelle, kein Video …",
     signalSource: "hd-talk · Forum",
-  },
-  {
-    id: "HN-0275",
-    title: "DWD Wind Warning: Severe Gusts (Level 2)",
-    crisisType: "Storm Warning",
-    eventType: "storm",
-    city: "Heilbronn",
-    coordinates: [49.1427, 9.2109],
-    status: "relevant",
-    confidence: 100,
-    riskLevel: "Moderate",
-    timestamp: minutesAgo(2),
-    aiSummary:
-      "Official DWD weather warning for the Heilbronn area. Severe gusts up to 85 km/h expected. Higher elevations may see gusts up to 100 km/h.",
-    locationConfidence: 100,
-    reasonForDecision:
-      "Escalated: Official authority warning from Deutscher Wetterdienst (DWD).",
-    breakdown: {
-      sourceReliability: 100,
-      locationMatch: 100,
-      mediaSupport: 0,
-      crossSourceConfirmation: 100,
-    },
-    evidenceLinks: [
-      {
-        sourceType: "Weather Alert",
-        title: "DWD: Official Warning for Heilbronn",
-        time: minutesAgo(2),
-        credibility: "high",
-        href: "https://www.dwd.de",
-      },
-    ],
-    signalSnippet:
-      "WARNUNG vor STURMBÖEN (Level 2): Für Stadt Heilbronn treten Sturmböen mit Geschwindigkeiten bis 85 km/h...",
-    signalSource: "DWD · Weather Alert",
   },
 ];
 

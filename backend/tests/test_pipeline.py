@@ -51,7 +51,7 @@ def make_report(**overrides: object) -> RawReport:
 
 def test_mock_data_matches_raw_report_schema() -> None:
     reports = load_raw_reports()
-    assert len(reports) == 60
+    assert len(reports) == 38
 
 
 def test_recycled_footage_is_flagged() -> None:
@@ -102,19 +102,15 @@ def test_reports_outside_radius_stay_separate() -> None:
 
 def test_full_pipeline_on_mock_data() -> None:
     result = run_pipeline(load_raw_reports())
-    assert len(result["debunked"]) == 35
-    assert sum(i.report_count for i in result["incidents"]) == 25
+    assert len(result["debunked"]) == 26
+    assert sum(i.report_count for i in result["incidents"]) == 12
     assert {i.event_type for i in result["incidents"]} == {
         "chemical_accident",
         "evacuation",
         "explosion",
-        "fire",
-        "flood",
-        "heatwave",
         "pandemic",
         "power_outage",
         "storm",
-        "water_supply",
     }
 
 
@@ -148,12 +144,12 @@ def test_bw_ministry_taxonomy_is_complete() -> None:
 
 def test_incidents_carry_guidance_and_sources() -> None:
     result = run_pipeline(load_raw_reports())
-    flood = next(i for i in result["incidents"] if i.event_type == "flood")
-    assert flood.severity == "high"
-    assert flood.action_hint and "Low corroboration" not in flood.action_hint
-    assert len(flood.sources) == flood.report_count
+    storm = next(i for i in result["incidents"] if i.event_type == "storm" and i.report_count > 1)
+    assert storm.severity == "moderate"
+    assert storm.action_hint and "Low corroboration" not in storm.action_hint
+    assert len(storm.sources) == storm.report_count
     # chronological source timeline
-    stamps = [s.timestamp for s in flood.sources]
+    stamps = [s.timestamp for s in storm.sources]
     assert stamps == sorted(stamps)
 
 
@@ -168,20 +164,23 @@ def test_single_source_incident_gets_low_corroboration_hint() -> None:
 # --- Live injection (POST /api/reports) ------------------------------------------
 
 
-def test_inject_corroborating_flood_merges() -> None:
+def test_inject_corroborating_chemical_accident_merges() -> None:
     reset_state()
-    before = next(i for i in state["incidents"] if i.event_type == "flood")
+    before = next(i for i in state["incidents"] if i.event_type == "chemical_accident")
+    # Use a timestamp within the 60 min clustering window of the rebased cluster
+    cluster_time = before.last_seen - timedelta(minutes=1)
     result = submit_report(
         ReportSubmission(
-            author="@hafen_kn",
-            text="Wasser steht jetzt auch in der Tiefgarage am Hafen",
-            event_type="flood",
-            lat=47.6609,
-            lon=9.1786,
+            author="@stg_warn",
+            text="Weitere Geruchsmeldungen aus Bad Cannstatt, Feuerwehr verstärkt ABC-Messungen",
+            event_type="chemical_accident",
+            lat=48.8007,
+            lon=9.2216,
+            timestamp=cluster_time,
         )
     )
     assert result.verdict == "verified"
-    after = next(i for i in state["incidents"] if i.event_type == "flood")
+    after = next(i for i in state["incidents"] if i.event_type == "chemical_accident")
     assert after.report_count == before.report_count + 1
     assert result.incident_id == after.id
 

@@ -160,6 +160,18 @@ function PanelContent({
           </p>
         </section>
 
+        {report.actionHint && (
+          <section className="rounded-lg border border-gold/30 bg-gold/5 p-4">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-3.5 w-3.5 text-gold" />
+              <SectionLabel>Recommended action</SectionLabel>
+            </div>
+            <p className="mt-2.5 text-[13px] leading-relaxed text-foreground/90 font-medium italic">
+              “{report.actionHint}”
+            </p>
+          </section>
+        )}
+
         <section className="rounded-lg border border-border bg-card p-5">
           <SectionLabel>AI-assisted confidence</SectionLabel>
           <div className="mt-4">
@@ -176,7 +188,7 @@ function PanelContent({
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3">
+        <section className="grid grid-cols-1">
           <div className="rounded-lg border border-border bg-card p-4">
             <SectionLabel>Risk level</SectionLabel>
             <span
@@ -185,18 +197,6 @@ function PanelContent({
               <ShieldAlert className="h-3.5 w-3.5" />
               {report.riskLevel}
             </span>
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <SectionLabel>Location confidence</SectionLabel>
-            <p className="mt-2 font-mono text-lg font-semibold tabular-nums text-foreground">
-              {report.locationConfidence}%
-            </p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full rounded-full bg-foreground/60"
-                style={{ width: `${report.locationConfidence}%` }}
-              />
-            </div>
           </div>
         </section>
 

@@ -7,7 +7,7 @@ loosely-located posts through the 1 km / 60 min clusterer — which is tuned for
 tight sector bursts and would shatter a city-wide, day-long event — we read the
 capture's own `incident` definition and group its posts by reported
 `incident_type` into one primary fire incident plus its cascading secondary
-incidents (air quality, evacuation, motorway closure, Rhine contamination).
+incidents (air quality, evacuation, Rhine contamination).
 
 Everything is emitted as the same `VerifiedIncident` schema the rest of the
 pipeline produces, so the API and dashboard consume it with zero special
@@ -85,14 +85,6 @@ _GROUPS: tuple[_Group, ...] = (
         (49.5287, 8.4698),
         "Precautionary evacuations plus school and Kita closures around the "
         "Mannheim-Waldhof fire.",
-    ),
-    _Group(
-        "INC-MH-A6",
-        "accident",
-        {"traffic"},
-        (49.5607, 8.4988),
-        "A6 motorway closed near Mannheim-Sandhofen due to smoke drift; "
-        "kilometre-long tailbacks.",
     ),
     _Group(
         "INC-MH-WATER",

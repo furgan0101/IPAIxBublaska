@@ -86,13 +86,22 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   // cities outside the main demo scenario (like Heilbronn) still show data.
   const allReports: CrisisReport[] = useMemo(() => {
     const backendReports = (incidents?.length ?? 0) + (debunked?.length ?? 0);
-    const adapted = online && backendReports > 0
+    let adapted = online && backendReports > 0
       ? adaptAll(incidents ?? [], debunked ?? [])
       : [];
 
+    // EXCLUSION: Konstanz is a live-only demo city. We never show mock data for it.
+    // Backend mock data IDs start with "INC-" or "RPT-". Live IDs start with "INC-LIVE-" or "RPT-LIVE-".
+    adapted = adapted.filter(r => {
+      if (r.city === "Konstanz") {
+        return r.id.includes("-LIVE-");
+      }
+      return true;
+    });
+
     // Combine adapted backend reports with mock reports, avoiding ID collisions.
     const adaptedIds = new Set(adapted.map(r => r.id));
-    const uniqueMocks = MOCK_REPORTS.filter(r => !adaptedIds.has(r.id));
+    const uniqueMocks = MOCK_REPORTS.filter(r => !adaptedIds.has(r.id) && r.city !== "Konstanz");
     
     return [...adapted, ...uniqueMocks];
   }, [online, incidents, debunked]);
@@ -333,17 +342,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         type: "critical",
         reportId: fireReport?.id || "INC-MH-FIRE",
       });
-
-      // 2. Motorway accident/closure
-      const transportReport = feed.find(r => r.id === "INC-MH-A6" || r.crisisType.toLowerCase().includes("transport") || r.title.toLowerCase().includes("transport") || r.id === "INC-MH-TRANS");
-      summaries.push({
-        title: "Motorway Closure & Traffic",
-        text: "The A6 motorway is closed near Sandhofen due to heavy smoke drift, causing major transport blockages and tailbacks.",
-        icon: "🚗",
-        type: "warning",
-        reportId: transportReport?.id || "INC-MH-A6",
-      });
-
 
     } else {
       // Dynamic fallback for other cities
