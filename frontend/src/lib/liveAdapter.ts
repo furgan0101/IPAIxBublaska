@@ -160,7 +160,6 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     aiSummary:
       (latestRationale ? `AI analyst: ${latestRationale} ` : "") +
       incident.summary,
-    actionHint: incident.action_hint,
     locationConfidence,
     reasonForDecision: `${incident.report_count} independent source${
       incident.report_count === 1 ? "" : "s"

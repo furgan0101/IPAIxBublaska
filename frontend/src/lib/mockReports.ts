@@ -55,8 +55,6 @@ export interface CrisisReport {
   /** ISO timestamp of the most recent signal. */
   timestamp: string;
   aiSummary: string;
-  /** Recommended responder action (narrative hint, own dossier block). */
-  actionHint?: string | null;
   /** 0–100. */
   locationConfidence: number;
   reasonForDecision: string;
