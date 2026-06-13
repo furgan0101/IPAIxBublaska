@@ -152,6 +152,20 @@ function MapEventsHandler({
   return null;
 }
 
+function ZoomTracker({ onZoomChange }: { onZoomChange: (zoom: number) => void }) {
+  const map = useMapEvents({
+    zoomend() {
+      onZoomChange(map.getZoom());
+    },
+  });
+
+  useEffect(() => {
+    onZoomChange(map.getZoom());
+  }, [map, onZoomChange]);
+
+  return null;
+}
+
 const TILE_URLS = {
   dark: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
   light: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
@@ -168,6 +182,7 @@ interface CrisisMapProps {
   onSelect: (id: string) => void;
   theme: "dark" | "light";
   focus?: MapFocus | null;
+  hasSearched?: boolean;
   
   // Tactical planning measures
   measures?: PlacedMeasure[];
@@ -187,6 +202,7 @@ export default function CrisisMap({
   onSelect,
   theme,
   focus,
+  hasSearched = false,
   measures = [],
   armedTool,
   selectedMeasureId,
@@ -200,12 +216,13 @@ export default function CrisisMap({
   const selected = reports.find((r) => r.id === selectedId) ?? null;
 
   const [roadworks, setRoadworks] = useState<any>(null);
+  const [currentZoom, setCurrentZoom] = useState(BW_ZOOM);
 
   const focusLat = focus?.center?.[0];
   const focusLng = focus?.center?.[1];
 
   useEffect(() => {
-    if (!focusLat || !focusLng) {
+    if (!hasSearched || !focusLat || !focusLng) {
       setRoadworks(null);
       return;
     }
@@ -218,7 +235,7 @@ export default function CrisisMap({
         }
       })
       .catch((err) => console.error("Failed to fetch roadworks:", err));
-  }, [focusLat, focusLng]);
+  }, [hasSearched, focusLat, focusLng]);
 
   const isBlockedStreet = (feature: any) => {
     if (!feature || !feature.properties) return false;
@@ -450,6 +467,8 @@ export default function CrisisMap({
     }).filter((p): p is NonNullable<typeof p> => p !== null);
   }, [reports, selectedId]);
 
+  const showRoadworks = roadworks && hasSearched && currentZoom >= 12;
+
   return (
     <MapContainer
       center={BW_CENTER}
@@ -465,9 +484,10 @@ export default function CrisisMap({
       />
 
       <MapController selected={selected} focus={focus} />
+      <ZoomTracker onZoomChange={setCurrentZoom} />
 
       {/* MobiData BW Roadworks and Closures Layer */}
-      {roadworks && (
+      {showRoadworks && (
         <GeoJSON
           key={`traffic-lines-${roadworks.features.length}-${theme}`}
           data={roadworks}
@@ -478,7 +498,7 @@ export default function CrisisMap({
       )}
 
       {/* MobiData BW Traffic & Closure Markers */}
-      {trafficMarkers.map((m: any) => {
+      {showRoadworks && trafficMarkers.map((m: any) => {
         const blocked = isBlockedStreet(m.feature);
         const title = blocked ? "Road Closure (Sperrung)" : "Heavy Traffic (Stau/Verzögerung)";
         const props = m.feature.properties;

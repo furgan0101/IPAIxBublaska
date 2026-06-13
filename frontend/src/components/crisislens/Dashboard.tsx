@@ -74,6 +74,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [minConfidence, setMinConfidence] = useState(1);
   const [region, setRegion] = useState<RegionFocus | null>(DEFAULT_REGION);
   const [feedOpen, setFeedOpen] = useState(true);
+  const [hasSearched, setHasSearched] = useState(false);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, online } = useDashboard();
@@ -362,10 +363,12 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           setSelectedId(null);
           setActiveTag(null); // a tag from the previous region may not exist here
           setRegion({ name: hit.name, center: hit.center });
+          setHasSearched(true);
         }}
         onClearRegion={() => {
           setActiveTag(null);
           setRegion(null);
+          setHasSearched(false);
         }}
       />
 
@@ -474,6 +477,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onSelect={selectIncident}
             theme={theme}
             focus={cityFocus}
+            hasSearched={hasSearched}
             measures={focusCity ? measures : []}
             armedTool={armedTool}
             selectedMeasureId={selectedMeasureId}
