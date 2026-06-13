@@ -177,6 +177,10 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     dispatched: incident.dispatched ?? false,
     dispatchedAt: incident.dispatched_at ?? null,
     classified,
+    aiCredibility:
+      incident.ai_credibility != null
+        ? Math.round(incident.ai_credibility * 100)
+        : null,
   };
 }
 
@@ -216,6 +220,7 @@ export function adaptDebunked(report: DebunkedReport): CrisisReport {
     mediaPreviews: report.media_preview ? [report.media_preview] : [],
     mediaConsistency: report.media_consistency ?? null,
     externalUrl: getWorkingUrl(report.url, report.text, report.source, report.author),
+    aiCredibility: Math.round(report.credibility_score * 100),
   };
 }
 

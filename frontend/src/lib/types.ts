@@ -16,6 +16,8 @@ export interface SourceReport {
   ai_rationale?: string | null;
   /** AI note on whether the media matches the claim (vision mode). */
   ai_media_note?: string | null;
+  /** AI analyst's per-source plausibility score, 0–1 (live AI mode only; null otherwise). */
+  ai_credibility?: number | null;
 }
 
 export interface SOPTask {
@@ -46,6 +48,8 @@ export interface VerifiedIncident {
   /** Itemized SOP checklist for responders. */
   sop_tasks: SOPTask[];
   sources: SourceReport[];
+  /** Mean AI plausibility across clustered sources, 0–1. Null in mock/heuristic mode. */
+  ai_credibility?: number | null;
 }
 
 export interface DebunkedReport {

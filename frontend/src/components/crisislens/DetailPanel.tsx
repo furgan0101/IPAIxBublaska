@@ -364,7 +364,7 @@ function PanelContent({
         <SopChecklist report={report} onDispatch={onDispatch} />
 
         <section className="rounded-lg border border-border bg-card p-5">
-          <SectionLabel>AI-assisted confidence</SectionLabel>
+          <SectionLabel>Corroboration confidence</SectionLabel>
           <div className="mt-4">
             <ConfidenceRing
               key={report.id}
@@ -379,7 +379,11 @@ function PanelContent({
           </div>
         </section>
 
-        <section className="grid grid-cols-2 gap-3">
+        <section
+          className={`grid gap-3 ${
+            report.aiCredibility != null ? "grid-cols-3" : "grid-cols-2"
+          }`}
+        >
           <div className="rounded-lg border border-border bg-card p-4">
             <SectionLabel>Risk level</SectionLabel>
             <span
@@ -401,6 +405,20 @@ function PanelContent({
               />
             </div>
           </div>
+          {report.aiCredibility != null && (
+            <div className="rounded-lg border border-border bg-card p-4">
+              <SectionLabel>AI plausibility</SectionLabel>
+              <p className="mt-2 font-mono text-lg font-semibold tabular-nums text-foreground">
+                {report.aiCredibility}%
+              </p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-gold"
+                  style={{ width: `${report.aiCredibility}%` }}
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         <section>

@@ -74,6 +74,8 @@ export interface CrisisReport {
   dispatchedAt?: string | null;
   /** Information discipline: raw intel (media, sources, snippets) is masked. */
   classified?: boolean;
+  /** AI analyst's plausibility estimate (0–100). Distinct from `confidence` (corroboration). */
+  aiCredibility?: number | null;
 }
 
 export const STATUS_META: Record<
@@ -168,6 +170,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSnippet:
       "Rauchsäule über dem Bahnhofsviertel sichtbar, Löschzug im Anmarsch …",
     signalSource: "@bodensee_spotter · Social Media",
+    aiCredibility: 88,
     actionHint:
       "Confirm fire-brigade dispatch, establish a 300 m cordon and reroute pedestrian traffic.",
     sopTasks: [
@@ -224,6 +227,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSnippet:
       "B14 stadteinwärts steht alles, mehrere Fahrzeuge beteiligt, Blaulicht vor Ort …",
     signalSource: "@stau_alarm_bw · Social Media",
+    aiCredibility: 81,
   },
   {
     id: "FR-0311",
@@ -361,6 +365,7 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSnippet:
       "RIESEN-EXPLOSION in der Neckarstadt!! Teilt das Video, bevor es gelöscht wird!!",
     signalSource: "@blitz_news_24 · Social Media",
+    aiCredibility: 12,
   },
   {
     id: "UL-0228",
