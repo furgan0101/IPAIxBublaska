@@ -30,12 +30,17 @@ class MastodonConnector:
         self._tags = settings.mastodon_tags
 
     async def fetch(self, client: httpx.AsyncClient) -> list[FetchedItem]:
+        return await self.fetch_tags(client, self._tags)
+
+    async def fetch_tags(
+        self, client: httpx.AsyncClient, tags: Sequence[str]
+    ) -> list[FetchedItem]:
         items: list[FetchedItem] = []
         seen: set[str] = set()
-        for tag in self._tags:
+        for tag in tags:
             statuses = await get_json(
                 client,
-                f"{self._instance}/api/v1/timelines/tag/{quote(tag)}",
+                f"{self._instance}/api/v1/timelines/tag/{quote(tag.lower())}",
                 params={"limit": str(_LIMIT_PER_TAG)},
             )
             for status in statuses or []:

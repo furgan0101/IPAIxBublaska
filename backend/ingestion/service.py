@@ -181,10 +181,11 @@ class IngestionService:
 
     # -- polling --------------------------------------------------------------------
 
-    async def poll_once(self) -> dict[str, int]:
-        """One full ingest cycle; returns drop/keep counters for /api/poll."""
+    async def poll_once(self, query: str | None = None) -> dict[str, int]:
+        """One full ingest cycle; returns drop/keep counters for /api/poll.
+        If `query` is provided, a specialized Mastodon scrape for that city/tag is run."""
         async with self._poll_lock:
-            fetched = await self._fetch_all()
+            fetched = await self._fetch_all(query)
             stats: dict[str, int] = {
                 "fetched": len(fetched),
                 "new_verified": 0,
@@ -240,7 +241,15 @@ class IngestionService:
             self._last_stats = stats
             return stats
 
-    async def _fetch_all(self) -> list[FetchedItem]:
+    async def _fetch_all(self, query: str | None = None) -> list[FetchedItem]:
+        if query:
+            # Special case: ad-hoc scrape for a specific city name on Mastodon.
+            mastodon = next((c for c in self._connectors if isinstance(c, MastodonConnector)), None)
+            if mastodon:
+                logger.info("Triggering ad-hoc Mastodon scrape for: %s", query)
+                return await mastodon.fetch_tags(self.client(), [query])
+            return []
+
         batches = await asyncio.gather(
             *(self._fetch_one(connector) for connector in self._connectors)
         )

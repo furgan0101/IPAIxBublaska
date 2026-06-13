@@ -65,10 +65,9 @@ _GROUPS: tuple[_Group, ...] = (
         {"fire"},
         (49.534767, 8.461813),
         "Major industrial fire in Mannheim-Waldhof (Sandhofer Str. 174) with a "
-        "large-scale fire-service response. Cascading effects across the city: "
-        "A6 motorway closure, school and Kita closures, elevated hospital "
-        "admissions for respiratory complaints, an air-quality alert, an "
-        "evacuation zone, and possible Rhine contamination from firefighting "
+        "large-scale fire response. Cascading effects: school closures, "
+        "respiratory hospital admissions, an air-quality alert, evacuation of "
+        "residential area, and potential Rhine contamination from firefighting "
         "runoff.",
     ),
     _Group(
@@ -201,7 +200,7 @@ def build_live_incidents(now: datetime | None = None) -> list[VerifiedIncident]:
             related.append(RelatedIncident(
                 incident_id="INC-MH-EVAC",
                 relation_type="causal",
-                rationale="The escalating industrial fire prompts immediate evacuations in nearby zones."
+                rationale="The escalating industrial fire prompts immediate evacuations in nearby zones, causes hazmat release, and the fire brigade works induces water pollution."
             ))
         elif group.incident_id == "INC-MH-AIR":
             related.append(RelatedIncident(

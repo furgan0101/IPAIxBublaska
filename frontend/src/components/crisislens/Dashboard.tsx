@@ -109,14 +109,21 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       ? "live"
       : "mock";
 
-  // Real pipeline output whenever the backend is reachable (in mock mode it
-  // serves the synthetic Konstanz feed) — dispatch/SOP/classified state lives
-  // on the backend, so the Leitstelle workflow needs the real pipeline. The
-  // bundled dataset only covers a fully offline demo (offline judging!).
+  // Whenever the backend is reachable, show its real pipeline output (dispatch/
+  // SOP/classified state lives on the backend) merged with the bundled curated
+  // set so cities outside the main demo scenario (e.g. Heilbronn) still show
+  // data. Offline falls back to mocks only (offline judging!).
   const allReports: CrisisReport[] = useMemo(() => {
-    if (!online) return MOCK_REPORTS;
-    const adapted = adaptAll(incidents ?? [], debunked ?? []);
-    return adapted.length > 0 ? adapted : MOCK_REPORTS;
+    const backendReports = (incidents?.length ?? 0) + (debunked?.length ?? 0);
+    const adapted = online && backendReports > 0
+      ? adaptAll(incidents ?? [], debunked ?? [])
+      : [];
+
+    // Combine adapted backend reports with mock reports, avoiding ID collisions.
+    const adaptedIds = new Set(adapted.map((r) => r.id));
+    const uniqueMocks = MOCK_REPORTS.filter((r) => !adaptedIds.has(r.id));
+
+    return [...adapted, ...uniqueMocks];
   }, [online, incidents, debunked]);
 
   // ------------------------------------------------ dispatch + toasts
@@ -200,7 +207,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       let filtered = allReports.filter(r => 
         r.id.startsWith("INC-") || // live incidents
         r.id.startsWith("RPT-") || // mock reports or direct injections
-        r.status === "ignored"     // debunked reports
+        r.status === "ignored"  || // debunked reports
+        /^[A-Z]{2}-/.test(r.id)    // city-prefixed mock reports (e.g. HN-0275)
       );
       if (activeTag) {
         filtered = filtered.filter((r) => r.crisisType === activeTag);
@@ -476,12 +484,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         base = base.filter((r) => r.confidence >= threshold);
       }
         
+      const limit = region?.name === "Mannheim" ? 37 : 150;
       const sorted = [...base]
         .sort(
           (a, b) =>
             safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
         )
-        .slice(0, 150);
+        .slice(0, limit);
 
       if (sorted.length > 0 && sorted.length % 2 === 0) {
         return sorted.slice(0, sorted.length - 1);
@@ -494,40 +503,79 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const popularSummary = useMemo(() => {
     if (feed.length === 0) return null;
 
-    // Sort to find the highest-risk and highest-confidence report
-    const sortedBySeverity = [...feed].sort((a, b) => {
-      const aRiskVal = a.riskLevel === "High" ? 3 : a.riskLevel === "Moderate" ? 2 : 1;
-      const bRiskVal = b.riskLevel === "High" ? 3 : b.riskLevel === "Moderate" ? 2 : 1;
-      if (bRiskVal !== aRiskVal) return bRiskVal - aRiskVal;
-      return b.confidence - a.confidence;
-    });
+    const summaries: Array<{
+      title: string;
+      text: string;
+      icon: string;
+      type: "critical" | "warning" | "info";
+      reportId?: string;
+    }> = [];
 
-    const topReport = sortedBySeverity[0];
-    const highRiskCount = feed.filter((r) => r.riskLevel === "High").length;
-    const escalatedCount = feed.filter((r) => r.status === "relevant").length;
+    // Check if we are in Mannheim (the main demo scenario)
+    if (region?.name === "Mannheim") {
+      // 1. Fire connected to water level, evacuation, and hazmat release
+      const fireReport = feed.find(r => r.id === "INC-MH-FIRE");
+      summaries.push({
+        title: "Industrial Fire Chain",
+        text: "Major industrial fire in Rheinau sector connected directly to local evacuation orders, Neckar water supply alerts, and toxic hazmat plume releases.",
+        icon: "🔥",
+        type: "critical",
+        reportId: fireReport?.id || "INC-MH-FIRE",
+      });
 
-    let text = "";
-    if (region) {
-      text = `Tracking ${feed.length} signals in the ${region.name} sector. `;
-      if (escalatedCount > 0) {
-        text += `${escalatedCount} alert${escalatedCount > 1 ? "s are" : " is"} escalated. `;
-      }
-      if (topReport) {
-        text += `The most critical is the ${topReport.crisisType} crisis, reported with a plausibility of ${topReport.confidence}%.`;
-      }
+      // 2. Motorway accident/closure
+      const transportReport = feed.find(r => r.id === "INC-MH-A6" || r.crisisType.toLowerCase().includes("transport") || r.title.toLowerCase().includes("transport") || r.id === "INC-MH-TRANS");
+      summaries.push({
+        title: "Motorway Closure & Traffic",
+        text: "The A6 motorway is closed near Sandhofen due to heavy smoke drift, causing major transport blockages and tailbacks.",
+        icon: "🚗",
+        type: "warning",
+        reportId: transportReport?.id || "INC-MH-A6",
+      });
+
+
     } else {
-      text = `Tracking ${feed.length} active signals across the Baden-Württemberg sector. `;
-      if (escalatedCount > 0) {
-        text += `${escalatedCount} alert${escalatedCount > 1 ? "s are" : " is"} escalated. `;
+      // Dynamic fallback for other cities
+      // Sort feed to find top critical incidents
+      const sortedBySeverity = [...feed].sort((a, b) => {
+        const aRiskVal = a.riskLevel === "High" ? 3 : a.riskLevel === "Moderate" ? 2 : 1;
+        const bRiskVal = b.riskLevel === "High" ? 3 : b.riskLevel === "Moderate" ? 2 : 1;
+        if (bRiskVal !== aRiskVal) return bRiskVal - aRiskVal;
+        return b.confidence - a.confidence;
+      });
+
+      // Take the top 2 unique crisis types if possible, otherwise top 2 reports
+      const selectedReports: typeof feed = [];
+      const seenTypes = new Set<string>();
+
+      for (const r of sortedBySeverity) {
+        if (!seenTypes.has(r.crisisType) && selectedReports.length < 2) {
+          selectedReports.push(r);
+          seenTypes.add(r.crisisType);
+        }
       }
-      if (topReport) {
-        text += `The most critical is the ${topReport.crisisType} crisis in ${topReport.city} with a plausibility of ${topReport.confidence}%.`;
+      
+      // Fill up to 2 if needed
+      for (const r of sortedBySeverity) {
+        if (selectedReports.length < 2 && !selectedReports.some(sr => sr.id === r.id)) {
+          selectedReports.push(r);
+        }
       }
+
+      selectedReports.forEach((r, idx) => {
+        const isCritical = r.riskLevel === "High" || r.confidence >= 80;
+        summaries.push({
+          title: r.title,
+          text: `${r.crisisType} alert in ${r.city}. Plausibility is estimated at ${r.confidence}% (${r.riskLevel} risk).`,
+          icon: idx === 0 ? "⚠️" : "📢",
+          type: isCritical ? "critical" : "warning",
+          reportId: r.id,
+        });
+      });
     }
 
     return {
-      text,
-      topReport,
+      items: summaries.slice(0, 3), // limit to max 3 items
     };
   }, [feed, region]);
 
@@ -605,12 +653,22 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         setActiveTag={setActiveTag}
         minConfidence={minConfidence}
         setMinConfidence={setMinConfidence}
-        regionName={region?.name ?? null}
+        regionName={hasSearched ? (region?.name ?? null) : null}
         onSelectCity={(hit) => {
           setSelectedId(null);
           setActiveTag(null); // a tag from the previous region may not exist here
           setRegion({ name: hit.name, center: hit.center });
           setHasSearched(true);
+          // Trigger the backend to run a live poll cycle to fetch latest warnings for the new region
+          fetch(
+            `${API_BASE}/api/poll?q=${encodeURIComponent(hit.name)}&lat=${hit.center[0]}&lon=${hit.center[1]}`,
+            { method: "POST" }
+          )
+            .then(() => {
+              // Immediately fetch updated incident list
+              refresh().catch(() => {});
+            })
+            .catch(() => {});
         }}
         onClearRegion={() => {
           setActiveTag(null);
@@ -639,62 +697,90 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           aria-hidden={Boolean(selected) || !feedOpen}
         >
           <div className="flex h-full w-[300px] flex-col border-r border-border bg-background">
-          <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
-            <Activity className="h-4 w-4 text-gold" />
-            <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
-              News Feed
-            </h2>
-            <span className="ml-auto rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-              {feed.length}
-            </span>
-          </div>
-
-          <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
             {popularSummary && (
-              <div className="mb-3 rounded-lg border border-border bg-card p-3 shadow-sm relative overflow-hidden">
-                {/* Subtle top indicator bar */}
-                <div className="absolute top-0 left-0 right-0 h-1 bg-destructive" />
-                
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-destructive"></span>
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-destructive">
-                      Top Region Alert
-                    </span>
-                  </div>
-                  {popularSummary.topReport.riskLevel === "High" && (
-                    <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-destructive">
-                      High Risk
-                    </span>
-                  )}
+              <div className="border-b border-border p-3 bg-muted/10 shrink-0">
+                <div className="px-2 pb-1.5 flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Critical Summaries
+                  </span>
+                  <span className="rounded-full bg-red-500/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase text-red-500">
+                    Live Alerts
+                  </span>
                 </div>
-
-                <h3 className="text-xs font-bold text-foreground line-clamp-1">
-                  {popularSummary.topReport.title}
-                </h3>
                 
-                <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                  {popularSummary.text}
-                </p>
+                <div className="space-y-2 mt-2 max-h-[300px] overflow-y-auto cl-scroll pr-1">
+                  {popularSummary.items.map((item, index) => {
+                    const isCritical = item.type === "critical";
+                    const isWarning = item.type === "warning";
+                    
+                    const borderClass = isCritical 
+                      ? "border-red-500/30 bg-red-500/5 dark:border-red-500/25 dark:bg-red-500/5" 
+                      : isWarning
+                        ? "border-amber-500/30 bg-amber-500/5 dark:border-amber-500/25 dark:bg-amber-500/5"
+                        : "border-border bg-card/60 hover:bg-muted/40";
+                    
+                    const titleColorClass = isCritical
+                      ? "text-red-500"
+                      : isWarning
+                        ? "text-amber-500 dark:text-amber-400"
+                        : "text-foreground font-semibold";
 
-                <div className="mt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => selectIncident(popularSummary.topReport.id)}
-                    className="w-full rounded border border-border/80 bg-muted/40 hover:bg-muted py-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors cursor-pointer"
-                  >
-                    Investigate Alert
-                  </button>
+                    return (
+                      <div 
+                        key={index} 
+                        className={`rounded-lg border p-3 shadow-sm relative overflow-hidden transition-all ${borderClass}`}
+                      >
+                        {/* Top indicator line */}
+                        {item.type !== "info" && (
+                          <div className={`absolute top-0 left-0 right-0 h-1 ${isCritical ? "bg-red-500" : "bg-amber-500"}`} />
+                        )}
+
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <span className="text-sm shrink-0" aria-hidden>{item.icon}</span>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider truncate ${titleColorClass}`}>
+                            {item.title}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          {item.text}
+                        </p>
+
+                        {item.reportId && (
+                          <div className="mt-2.5">
+                            <button
+                              type="button"
+                              onClick={() => selectIncident(item.reportId!)}
+                              className="w-full rounded border border-border/80 bg-muted/45 hover:bg-muted py-1 text-center font-mono text-[10px] font-bold uppercase tracking-wider text-foreground transition-colors cursor-pointer"
+                            >
+                              Investigate Alert
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
 
-            <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
-              <ReportTimeline reports={feed} />
+            <div className="flex items-center gap-2.5 border-b border-border px-5 py-3.5">
+              <Activity className="h-4 w-4 text-gold" />
+              <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-foreground">
+                News Feed
+              </h2>
+              <span className="ml-auto rounded-full bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                {feed.length}
+              </span>
             </div>
+
+            <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
+
+            {feed.length > 0 && (
+              <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
+                <ReportTimeline reports={feed} decayShape={region?.name === "Mannheim" && minConfidence <= 1} />
+              </div>
+            )}
             {feed.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
                 No current news{region ? ` for ${region.name}` : ""}.
@@ -729,9 +815,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                         </span>
                         <span className="mt-2 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
                           “{report.signalSnippet}”
-                        </span>
-                        <span className="mt-1.5 block truncate text-[10px] text-muted-foreground/70">
-                          {report.signalSource}
                         </span>
                       </button>
                     </li>

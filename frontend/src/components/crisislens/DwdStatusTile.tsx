@@ -71,11 +71,11 @@ export default function DwdStatusTile({ locationName, lat, lon }: DwdStatusTileP
              <span className="flex h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
           )}
         </div>
-        <div className="text-[11px] font-semibold leading-tight text-foreground">
+        <div className="text-[11px] font-semibold leading-tight text-foreground max-w-[120px] truncate">
           {active ? (
-            <span className="flex items-center gap-1">
-              Level {level} Warning
-              <ExternalLink className="h-2.5 w-2.5 opacity-50" />
+            <span className="flex items-center gap-1" title={status?.headline || ""}>
+              {status?.headline?.replace("Amtliche ", "") || `Level ${level} Warning`}
+              <ExternalLink className="h-2.5 w-2.5 opacity-50 shrink-0" />
             </span>
           ) : (
             <span className="opacity-50">No Warnings</span>

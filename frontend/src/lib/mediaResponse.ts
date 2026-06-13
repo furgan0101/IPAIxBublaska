@@ -364,7 +364,6 @@ const EVENT_DE: Record<string, string> = {
   "Traffic Accident": "Verkehrsunfall",
   "Power Outage": "Stromausfall",
   "Storm Damage": "Sturmschäden",
-  "Fallen Tree": "Umgestürzter Baum",
   "Explosion Rumour": "Explosionsgerücht",
   "Crowd Incident Rumour": "Gerücht über eine Massenpanik",
 };
