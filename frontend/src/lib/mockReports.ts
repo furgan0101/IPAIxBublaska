@@ -5,6 +5,7 @@
  */
 
 import type { SOPTask } from "@/lib/types";
+import { getWorkingUrl } from "./urls";
 
 export type ReportStatus = "relevant" | "review" | "ignored";
 export type RiskLevel = "High" | "Moderate" | "Low";
@@ -492,3 +493,15 @@ export const MOCK_REPORTS: CrisisReport[] = [
     signalSource: "Warn-app · Citizen Report",
   },
 ];
+
+// Resolve all fallback '#' hrefs dynamically on load
+for (const report of MOCK_REPORTS) {
+  if (!report.externalUrl || report.externalUrl === "#") {
+    report.externalUrl = getWorkingUrl(report.externalUrl, report.title, report.crisisType, report.signalSource);
+  }
+  for (const link of report.evidenceLinks) {
+    if (!link.href || link.href === "#") {
+      link.href = getWorkingUrl(link.href, link.title, link.sourceType);
+    }
+  }
+}

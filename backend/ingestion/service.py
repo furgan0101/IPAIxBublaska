@@ -29,8 +29,8 @@ from geopy.distance import geodesic
 from ingestion.base import Connector, FetchedItem
 from ingestion.classify import classify
 from ingestion.config import IngestionSettings
-from ingestion.feuerwehr import FeuerwehrConnector
 from ingestion.geocode import Geocoder
+from ingestion.dwd import DwdConnector
 from ingestion.mastodon import MastodonConnector
 from ingestion.nina import NinaConnector
 from ingestion.presseportal import PresseportalConnector
@@ -51,15 +51,15 @@ ID_PREFIXES: dict[str, str] = {
     "nina": "NINA",
     "presseportal": "POL",
     "mastodon": "MSTDN",
-    "feuerwehr": "FW",
+    "dwd": "DWD",
 }
 
 #: Official channels lift the cluster confidence to at least this floor —
-#: a federal warning, police or fire-brigade release IS the corroboration.
+#: a federal warning or police release IS the corroboration.
 OFFICIAL_CONFIDENCE_FLOOR: dict[str, float] = {
     "nina": 0.90,
     "presseportal": 0.80,
-    "feuerwehr": 0.80,
+    "dwd": 0.90,
 }
 
 DEBUNKED_LIMIT: int = 60
@@ -71,15 +71,12 @@ _PAREN_HINT_RE: re.Pattern[str] = re.compile(r"\(([^)]{3,80})\)")
 
 
 def default_connectors(settings: IngestionSettings) -> list[Connector]:
-    connectors: list[Connector] = [
+    return [
         NinaConnector(settings),
         PresseportalConnector(settings),
         MastodonConnector(settings),
+        DwdConnector(settings),
     ]
-    # Fire & rescue is opt-in — only poll it when feeds are configured.
-    if settings.fire_feeds:
-        connectors.append(FeuerwehrConnector(settings))
-    return connectors
 
 
 @dataclass

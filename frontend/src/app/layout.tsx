@@ -24,9 +24,9 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CrisisLens — AI-assisted crisis signal analysis",
+  title: "CrisisLens — Crisis Signal Analysis",
   description:
-    "AI-assisted crisis signal triage for civil protection teams. Mock crisis dataset · Baden-Württemberg · human-in-the-loop review.",
+    "Crisis signal triage for civil protection teams. Mock crisis dataset · human-in-the-loop review.",
 };
 
 /** Applies the persisted theme before first paint to avoid a flash. */

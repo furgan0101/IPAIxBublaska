@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RotateCcw,
+  Search,
 } from "lucide-react";
 
 import {
@@ -36,6 +37,7 @@ import DetailPanel from "./DetailPanel";
 import ToastStack, { type DashboardToast } from "./ToastStack";
 import LageberichtPrint from "./LageberichtPrint";
 import TagFilter from "./TagFilter";
+import FilterToolbar from "./FilterToolbar";
 import CityFocusPicker from "./CityFocusPicker";
 import CommandBanner from "./CommandBanner";
 import CommandConsole from "./CommandConsole";
@@ -47,7 +49,7 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ssr: false,
   loading: () => (
     <div className="flex h-full w-full items-center justify-center bg-background font-mono text-xs uppercase tracking-[0.16em] text-muted-foreground">
-      Loading Baden-Württemberg sector map…
+      Loading map…
     </div>
   ),
 });
@@ -89,6 +91,9 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [focusCity, setFocusCity] = useState<string | null>(null);
   const [lastAnalysis, setLastAnalysis] = useState<Date | null>(null);
   const [activeTag, setActiveTag] = useState<string | null>(null);
+  const [minConfidence, setMinConfidence] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [manualFocus, setManualFocus] = useState<MapFocus | null>(null);
   const [feedOpen, setFeedOpen] = useState(true);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
@@ -184,11 +189,30 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   );
 
   const reports = useMemo(
-    () =>
-      activeTag
-        ? allReports.filter((r) => r.crisisType === activeTag)
-        : allReports,
-    [allReports, activeTag],
+    () => {
+      let filtered = allReports;
+      if (activeTag) {
+        filtered = filtered.filter((r) => r.crisisType === activeTag);
+      }
+      if (minConfidence > 1) {
+        // Map 1-5 scale to 0-100% threshold: (val-1) * 25
+        // e.g., 1.0 -> 0%, 3.0 -> 50%, 5.0 -> 100%
+        const threshold = (minConfidence - 1) * 25;
+        filtered = filtered.filter((r) => r.confidence >= threshold);
+      }
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.city.toLowerCase().includes(q) ||
+            r.crisisType.toLowerCase().includes(q) ||
+            r.signalSnippet.toLowerCase().includes(q) ||
+            r.signalSource.toLowerCase().includes(q),
+        );
+      }
+      return filtered;
+    },
+    [allReports, activeTag, minConfidence, searchQuery],
   );
 
   const tagCounts = useMemo(() => {
@@ -222,15 +246,38 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   }, [focusCity, reports]);
 
   const cityFocus = useMemo<MapFocus | null>(() => {
-    if (!focusCity || scopedReports.length === 0) return null;
-    const lat =
-      scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
-      scopedReports.length;
-    const lon =
-      scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
-      scopedReports.length;
-    return { center: [lat, lon], zoom: 12 };
-  }, [focusCity, scopedReports]);
+    // 1. Manual map jump (from search)
+    if (manualFocus) return manualFocus;
+
+    // 2. Manual city focus (Command Mode)
+    if (focusCity && scopedReports.length > 0) {
+      const lat =
+        scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
+        scopedReports.length;
+      const lon =
+        scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
+        scopedReports.length;
+      return { center: [lat, lon], zoom: 12 };
+    }
+
+    // 3. Search results zoom
+    // If the user has typed something that filters the list, fly to the center of results.
+    const isSearching = searchQuery.trim().length >= 2;
+    if (isSearching && reports.length > 0) {
+      const lat =
+        reports.reduce((sum, r) => sum + r.coordinates[0], 0) / reports.length;
+      const lon =
+        reports.reduce((sum, r) => sum + r.coordinates[1], 0) / reports.length;
+
+      // If results are few or all in one city, zoom deep. Otherwise, overview.
+      const uniqueCities = new Set(reports.map((r) => r.city));
+      const zoom = (reports.length <= 3 || uniqueCities.size === 1) ? 14 : 10;
+
+      return { center: [lat, lon], zoom };
+    }
+
+    return null;
+  }, [focusCity, scopedReports, reports, searchQuery, manualFocus]);
 
   const firstSignal = useMemo(
     () => (focusCity ? firstSignalAt(scopedReports) : null),
@@ -374,49 +421,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           </span>
         </div>
 
-        <span className="hidden h-5 w-px bg-border md:block" aria-hidden />
-        <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground md:block">
-          Baden-Württemberg sector
-        </span>
-
         <div className="ml-auto flex items-center gap-3">
-          {!focusCity && (
-            <CityFocusPicker reports={reports} onFocus={enterCommandMode} />
-          )}
-
-          <span
-            className={`hidden items-center gap-2 rounded-full border px-3 py-1 sm:flex ${modeMeta.chip}`}
-            title="Data source: live backend pipeline vs. bundled demo dataset"
-          >
-            <span className="relative flex h-2 w-2">
-              {modeMeta.ping && (
-                <span
-                  className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${modeMeta.dot}`}
-                />
-              )}
-              <span
-                className={`relative inline-flex h-2 w-2 rounded-full ${modeMeta.dot}`}
-              />
-            </span>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">
-              {modeMeta.label}
-            </span>
-          </span>
-
-          <span
-            className="hidden rounded-full border border-border bg-muted px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground md:block"
-            title="LLM analyst mode (LiteLLM gateway, Qwen3-VL)"
-          >
-            AI {health?.ai_mode ?? "mock"}
-          </span>
-
-          <span className="hidden font-mono text-[11px] tabular-nums text-muted-foreground lg:block">
-            Last analysis{" "}
-            <span className="text-foreground" suppressHydrationWarning>
-              {lastAnalysis ? lastAnalysis.toLocaleTimeString("de-DE") : "—"}
-            </span>
-          </span>
-
           {selected && (
             <button
               type="button"
@@ -449,6 +454,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
       </header>
+
+      <FilterToolbar
+        tagCounts={tagCounts}
+        activeTag={activeTag}
+        setActiveTag={setActiveTag}
+        minConfidence={minConfidence}
+        setMinConfidence={setMinConfidence}
+      />
 
       {/* -------------------------------------------- command mode banner */}
       {focusCity && (
@@ -532,11 +545,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             )}
           </div>
 
-          <p className="border-t border-border px-5 py-3.5 text-[11px] leading-relaxed text-muted-foreground">
-            {mode === "live"
-              ? "AI-assisted plausibility on live open feeds (NINA · police RSS · Mastodon). Human review required before escalation."
-              : "AI-assisted plausibility estimates on synthetic data. Human review required before escalation."}
-          </p>
           </div>
         </aside>
 
@@ -573,19 +581,101 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
             onResizeZone={(id, radiusM) => updateMeasure(id, { radiusM })}
           />
 
-          {/* Tag filter */}
-          <TagFilter
-            tags={tagCounts}
-            active={activeTag}
-            onChange={setActiveTag}
-          />
-
           {/* Measure palette — the editable tactical layer (Command Mode). */}
           {focusCity && !selected && (
             <MeasurePalette armed={armedTool} onArm={setArmedTool} />
           )}
 
-        </main>
+          {/* Map tint overlay — visible only before the user picks a location */}
+          <div
+            className={`pointer-events-none absolute inset-0 z-[999] bg-black transition-opacity duration-500 ${
+              manualFocus || searchQuery ? "opacity-0" : "opacity-50"
+            }`}
+            aria-hidden
+          />
+
+          {/* Floating Search Bar — centred until the user picks a location */}
+          <div
+            className={`pointer-events-none absolute left-1/2 z-[1000] -translate-x-1/2 px-4 transition-all duration-500 ease-in-out ${
+              manualFocus || searchQuery
+                ? "bottom-6 top-auto -translate-y-0"
+                : "top-1/2 -translate-y-1/2"
+            }`}
+          >
+            <div className="pointer-events-auto flex flex-col items-center gap-4">
+              {!manualFocus && !searchQuery && (
+                <div className="mb-2 text-center">
+                  <p className="font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg">
+                    Where do you want to monitor?
+                  </p>
+                  <p className="mt-2 font-mono text-xs uppercase tracking-[0.18em] text-white/60">
+                    Enter a city or region and press Enter
+                  </p>
+                </div>
+              )}
+              <div
+                className={`flex items-center gap-3 rounded-2xl border-2 bg-white px-5 shadow-[0_8px_40px_rgba(0,0,0,0.5)] transition-all duration-500 dark:bg-zinc-900 ${
+                  manualFocus || searchQuery
+                    ? "border-border py-2"
+                    : "border-gold/70 py-4 ring-4 ring-gold/20"
+                }`}
+              >
+                <Search
+                  className={`shrink-0 transition-all duration-500 ${
+                    manualFocus || searchQuery
+                      ? "h-4 w-4 text-gold"
+                      : "h-5 w-5 text-gold"
+                  }`}
+                />
+                <input
+                  type="text"
+                  placeholder="e.g. Konstanz, Stuttgart, Freiburg…"
+                  value={searchQuery}
+                  autoFocus={!manualFocus}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (!e.target.value) setManualFocus(null);
+                  }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && searchQuery.trim().length >= 2) {
+                      try {
+                        const res = await fetch(
+                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(searchQuery)}`,
+                        );
+                        const data = await res.json();
+                        if (data.lat && data.lon) {
+                          setManualFocus({
+                            center: [data.lat, data.lon],
+                            zoom: 14,
+                          });
+                        }
+                      } catch (err) {
+                        console.error("Search geocoding failed", err);
+                      }
+                    }
+                  }}
+                  className={`bg-transparent font-mono text-zinc-900 placeholder-zinc-400 focus:outline-none dark:text-white dark:placeholder-zinc-500 ${
+                    manualFocus || searchQuery
+                      ? "w-72 text-sm lg:w-96"
+                      : "w-80 text-base lg:w-[480px]"
+                  }`}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setManualFocus(null);
+                    }}
+                    title="Clear search"
+                    className="rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-white"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          </main>
 
         {/* Command console — LISTEN + RESPOND for the focused city. It
             collapses like the signals rail when the dossier takes over. */}

@@ -23,7 +23,7 @@ const PIPELINE_TABS = [
       badge: "Stage 01 · Ingest",
       title: "Open sources, one picture.",
       description:
-        "CrisisLens collects public crisis signals — social posts, local news, weather alerts and citizen reports — and normalises them into a single time-stamped feed for the Baden-Württemberg sector.",
+        "CrisisLens collects public crisis signals — social posts, local news, weather alerts and citizen reports — and normalises them into a single time-stamped feed.",
       buttonText: "Begin Analysis",
       imageSrc:
         "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",
@@ -33,12 +33,12 @@ const PIPELINE_TABS = [
   {
     value: "triage",
     icon: <ScanSearch className="h-auto w-4 shrink-0" />,
-    label: "AI-assisted triage",
+    label: "Triage analysis",
     content: {
       badge: "Stage 02 · Triage",
       title: "Plausibility, not proclamation.",
       description:
-        "Every report receives an AI-assisted plausibility estimate built from source reliability, location match, media support and cross-source confirmation. Weak signals are ignored due to insufficient corroboration — never silently deleted.",
+        "Every report receives a plausibility estimate built from source reliability, location match, media support and cross-source confirmation. Weak signals are ignored due to insufficient corroboration — never silently deleted.",
       buttonText: "Open the dashboard",
       imageSrc:
         "https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=80",
@@ -93,7 +93,7 @@ export default function Landing({
             </div>
             <div className="flex items-center gap-4">
               <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground sm:block">
-                VOST BW · Concept demo
+                Concept demo
               </span>
               <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             </div>
@@ -106,21 +106,34 @@ export default function Landing({
             className="cl-rise font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground"
             style={{ animationDelay: "0.05s" }}
           >
-            Baden-Württemberg · Civil protection
+            Civil protection
           </p>
 
-          <h1
-            className="cl-rise mt-6 font-display text-7xl font-semibold leading-[0.95] tracking-tight sm:text-8xl"
-            style={{ animationDelay: "0.15s" }}
-          >
-            Crisis<span className="text-gold">Lens</span>
-          </h1>
+          <div className="mt-6 flex flex-col justify-between gap-10 lg:flex-row lg:items-center">
+            <h1
+              className="cl-rise font-display text-7xl font-semibold leading-[0.95] tracking-tight sm:text-8xl"
+              style={{ animationDelay: "0.15s" }}
+            >
+              Crisis<span className="text-gold">Lens</span>
+            </h1>
+            
+            <div 
+              className="cl-rise max-w-lg overflow-hidden rounded-xl border border-border bg-muted/30 shadow-2xl"
+              style={{ animationDelay: "0.2s" }}
+            >
+              <img 
+                src="/hero-map.png" 
+                alt="Situational awareness map" 
+                className="h-auto w-full object-cover grayscale invert dark:grayscale-0 dark:invert-0"
+              />
+            </div>
+          </div>
 
           <p
             className="cl-rise mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground"
             style={{ animationDelay: "0.3s" }}
           >
-            AI-assisted crisis signal analysis for civil protection teams.
+            Crisis signal analysis for civil protection teams.
           </p>
 
           <div
@@ -143,7 +156,7 @@ export default function Landing({
             className="cl-rise mt-10 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground"
             style={{ animationDelay: "0.6s" }}
           >
-            Mock crisis dataset · Baden-Württemberg · Human-in-the-loop review
+            Mock crisis dataset · Human-in-the-loop review
           </p>
         </section>
 

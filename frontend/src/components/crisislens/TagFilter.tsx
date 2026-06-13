@@ -27,7 +27,7 @@ export default function TagFilter({
     <div
       role="group"
       aria-label="Filter reports by event type"
-      className="pointer-events-auto absolute left-4 top-4 z-[1000] flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2 rounded-lg bg-background/80 px-2.5 py-2 backdrop-blur-sm"
+      className="flex flex-wrap items-center gap-2"
     >
       <button
         type="button"

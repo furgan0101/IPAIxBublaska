@@ -58,7 +58,10 @@ logging.getLogger("httpx").setLevel(logging.INFO)
 logging.getLogger("openai").setLevel(_LOG_LEVEL)
 logging.getLogger("vost.verification").setLevel(logging.DEBUG)
 
+import httpx
 from ingestion import IngestionService, IngestionSettings, default_connectors
+from ingestion.geocode import Geocoder
+from ingestion.storage import FeedStore
 from logic.geospatial import RADIUS_KM, cluster_reports
 from logic.verification import (
     ai_mode,
@@ -105,6 +108,10 @@ state: PipelineState = {"credible": [], "incidents": [], "debunked": [], "live_s
 # Live ingestion (FEEDS_ENABLED=true): created during lifespan, None in mock mode.
 ingestion_service: IngestionService | None = None
 _ingest_task: asyncio.Task[None] | None = None
+
+# Geocoder is always available (uses local gazetteer + optional Nominatim).
+_geocoder: Geocoder | None = None
+_geo_client: httpx.AsyncClient | None = None
 
 
 @dataclass(frozen=True)
@@ -335,8 +342,19 @@ def submit_report(submission: ReportSubmission) -> SubmissionResult:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    global ingestion_service, _ingest_task
+    global ingestion_service, _ingest_task, _geocoder, _geo_client
     settings = IngestionSettings.from_env()
+
+    # Shared geocoder for the /api/geocode endpoint.
+    store = FeedStore(settings.db_path)
+    await asyncio.to_thread(store.init)
+    _geocoder = Geocoder(settings, store)
+    _geo_client = httpx.AsyncClient(
+        headers={"User-Agent": settings.user_agent},
+        timeout=settings.request_timeout_s,
+        follow_redirects=True,
+    )
+
     if settings.enabled:
         ingestion_service = IngestionService(
             settings, default_connectors(settings), publish=_publish_snapshot
@@ -354,6 +372,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if ingestion_service is not None:
         await ingestion_service.aclose()
         ingestion_service = None
+    if _geo_client is not None:
+        await _geo_client.aclose()
+        _geo_client = None
 
 
 app = FastAPI(
@@ -462,3 +483,16 @@ def health() -> dict[str, object]:
     if ingestion_service is not None:
         payload["feeds"] = ingestion_service.status()
     return payload
+
+
+@app.get("/api/geocode")
+async def get_geocode(q: str) -> dict[str, object]:
+    """Resolve a place name to coordinates (gazetteer + Nominatim)."""
+    if _geocoder is None or _geo_client is None:
+        return {"error": "Geocoder not initialized"}
+
+    # Geocoder.resolve(client, place_hint, text)
+    coords = await _geocoder.resolve(_geo_client, q, "")
+    if coords:
+        return {"lat": coords[0], "lon": coords[1]}
+    return {"error": "Location not found"}

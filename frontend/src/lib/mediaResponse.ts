@@ -12,6 +12,7 @@
  */
 
 import { safeNewDate } from "@/lib/format";
+import { getWorkingUrl } from "@/lib/urls";
 import type { CrisisReport } from "@/lib/mockReports";
 
 /* ------------------------------------------------ deterministic noise */
@@ -225,14 +226,14 @@ export function derivePulse(city: string, reports: CrisisReport[]): CityPulse {
         text: report.signalSnippet,
         attribution: report.signalSource,
         timestamp: report.timestamp,
-        href: report.externalUrl ?? "#",
+        href: getWorkingUrl(report.externalUrl, report.signalSnippet, "", report.signalSource),
       },
       ...report.evidenceLinks.map((e, i) => ({
         id: `${report.id}-ev${i}`,
         text: e.title,
         attribution: e.sourceType,
         timestamp: e.time,
-        href: e.href,
+        href: getWorkingUrl(e.href, e.title, e.sourceType),
       })),
     ])
     .sort((a, b) => safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime())

@@ -36,75 +36,6 @@ DEFAULT_MASTODON_TAGS: tuple[str, ...] = (
     "unwetter",
 )
 
-# --- Statewide Baden-Württemberg presets ------------------------------------
-# Opt in from backend/.env with the shorthands NINA_ARS=08* and
-# PRESSEPORTAL_FEEDS=bw instead of pasting the full lists (see _expand).
-
-# All 44 BW Stadt-/Landkreise as 12-digit ARS (5-digit Kreisschlüssel + zeros).
-BW_NINA_REGIONS: tuple[str, ...] = (
-    # Regierungsbezirk Stuttgart
-    "081110000000", "081150000000", "081160000000", "081170000000",
-    "081180000000", "081190000000", "081210000000", "081250000000",
-    "081260000000", "081270000000", "081280000000", "081350000000",
-    "081360000000",
-    # Regierungsbezirk Karlsruhe
-    "082110000000", "082120000000", "082150000000", "082160000000",
-    "082210000000", "082220000000", "082250000000", "082260000000",
-    "082310000000", "082350000000", "082360000000", "082370000000",
-    # Regierungsbezirk Freiburg
-    "083110000000", "083150000000", "083160000000", "083170000000",
-    "083250000000", "083260000000", "083270000000", "083350000000",
-    "083360000000", "083370000000",
-    # Regierungsbezirk Tübingen
-    "084150000000", "084160000000", "084170000000", "084210000000",
-    "084250000000", "084260000000", "084350000000", "084360000000",
-    "084370000000",
-)
-
-# All 13 BW regional police HQ newsrooms + Polizeipräsidium Einsatz (statewide).
-_BW_POLICE_DIENSTSTELLEN: tuple[str, ...] = (
-    "110969",  # Aalen
-    "110970",  # Freiburg
-    "110971",  # Heilbronn
-    "110972",  # Karlsruhe
-    "110973",  # Konstanz
-    "110974",  # Ludwigsburg
-    "110975",  # Offenburg
-    "110976",  # Reutlingen
-    "110977",  # Stuttgart
-    "110979",  # Ulm
-    "110981",  # Einsatz (statewide operations)
-    "14915",   # Mannheim
-    "137462",  # Pforzheim
-    "138081",  # Ravensburg
-)
-BW_PRESSEPORTAL_FEEDS: tuple[str, ...] = tuple(
-    f"https://www.presseportal.de/rss/dienststelle_{nr}.rss2"
-    for nr in _BW_POLICE_DIENSTSTELLEN
-)
-
-# BW fire & rescue newsrooms (Presseportal) — the legal analogue to live
-# operational chatter: brigades publish during/right after deployments
-# (fires, floods, technical rescue, hazmat). No statewide dispatch API exists,
-# so this is the closest lawful, keyless "Einsatz" signal. Opt in: FIRE_FEEDS=bw.
-_BW_FIRE_DIENSTSTELLEN: tuple[str, ...] = (
-    "161590",  # Feuerwehr Stuttgart (Berufsfeuerwehr)
-    "164917",  # Feuerwehr Böblingen
-    "179375",  # Feuerwehr Weinheim
-    "182024",  # Feuerwehr Weil am Rhein
-    "169982",  # Feuerwehr Radolfzell
-    "139089",  # Feuerwehr Konstanz
-    "175384",  # Feuerwehr Allensbach
-    "163367",  # Freiwillige Feuerwehr Reichenau
-    "182292",  # Freiwillige Feuerwehr Überlingen
-    "130685",  # Kreisfeuerwehrverband Landkreis Karlsruhe
-    "116896",  # Kreisfeuerwehrverband Calw
-)
-BW_FIRE_FEEDS: tuple[str, ...] = tuple(
-    f"https://www.presseportal.de/rss/dienststelle_{nr}.rss2"
-    for nr in _BW_FIRE_DIENSTSTELLEN
-)
-
 
 def _flag(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
@@ -117,17 +48,6 @@ def _csv(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
     raw = os.getenv(name, "")
     values = tuple(part.strip() for part in raw.split(",") if part.strip())
     return values or default
-
-
-def _expand(
-    values: tuple[str, ...], aliases: dict[str, tuple[str, ...]]
-) -> tuple[str, ...]:
-    """Replace shorthand tokens (e.g. NINA_ARS=08*) with their preset list,
-    pass everything else through, and de-duplicate preserving order."""
-    out: list[str] = []
-    for value in values:
-        out.extend(aliases.get(value.lower(), (value,)))
-    return tuple(dict.fromkeys(out))
 
 
 def _number(name: str, default: float) -> float:
@@ -156,8 +76,6 @@ class IngestionSettings:
     nominatim_enabled: bool
     request_timeout_s: float
     user_agent: str
-    # Fire & rescue RSS newsrooms — opt-in (default off keeps the demo lean).
-    fire_feeds: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> "IngestionSettings":
@@ -173,13 +91,9 @@ class IngestionSettings:
             sector_lon=_number("SECTOR_LON", DEFAULT_SECTOR_LON),
             sector_radius_km=max(1.0, _number("SECTOR_RADIUS_KM", 40.0)),
             db_path=db_path,
-            nina_regions=_expand(
-                _csv("NINA_ARS", DEFAULT_NINA_REGIONS),
-                {"08*": BW_NINA_REGIONS, "bw": BW_NINA_REGIONS},
-            ),
-            presseportal_feeds=_expand(
-                _csv("PRESSEPORTAL_FEEDS", DEFAULT_PRESSEPORTAL_FEEDS),
-                {"bw": BW_PRESSEPORTAL_FEEDS},
+            nina_regions=_csv("NINA_ARS", DEFAULT_NINA_REGIONS),
+            presseportal_feeds=_csv(
+                "PRESSEPORTAL_FEEDS", DEFAULT_PRESSEPORTAL_FEEDS
             ),
             mastodon_instance=os.getenv(
                 "MASTODON_INSTANCE", "https://mastodon.social"
@@ -191,5 +105,4 @@ class IngestionSettings:
                 "FEEDS_USER_AGENT",
                 "VOSTbw-OSINT-Dashboard/0.3 (hackathon demo; situational awareness)",
             ),
-            fire_feeds=_expand(_csv("FIRE_FEEDS", ()), {"bw": BW_FIRE_FEEDS}),
         )

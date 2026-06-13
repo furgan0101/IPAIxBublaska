@@ -322,6 +322,9 @@ function MapController({
   const map = useMap();
   const firstRun = useRef(true);
   const lastPannedId = useRef<string | null>(null);
+  // De-dup focus flights: a search/city focus that recomputes to the same
+  // coordinates (e.g. a live poll re-runs the memo) must not re-centre.
+  const lastFocusKey = useRef<string | null>(null);
 
   // Pan once per measure selection; dragging it must not re-centre the map.
   useEffect(() => {
@@ -352,10 +355,16 @@ function MapController({
         map.flyTo(selected.coordinates, Math.max(map.getZoom(), FOCUS_ZOOM), {
           duration: 0.9,
         });
+        lastFocusKey.current = null;
       } else if (focus) {
-        map.flyTo(focus.center, focus.zoom, { duration: 0.9 });
+        const focusKey = `${focus.center[0]},${focus.center[1]},${focus.zoom}`;
+        if (focusKey !== lastFocusKey.current) {
+          map.flyTo(focus.center, focus.zoom, { duration: 0.9 });
+          lastFocusKey.current = focusKey;
+        }
       } else {
         map.flyTo(BW_CENTER, BW_ZOOM, { duration: 0.9 });
+        lastFocusKey.current = null;
       }
     }, FLY_DELAY_MS);
     return () => window.clearTimeout(timer);

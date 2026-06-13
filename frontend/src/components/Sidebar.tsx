@@ -3,6 +3,7 @@
 import { Clock, ExternalLink, Radio, ShieldX, Users } from "lucide-react";
 
 import IncidentDetail from "@/components/IncidentDetail";
+import { getWorkingUrl } from "@/lib/urls";
 import { EventIcon, eventMeta } from "@/lib/eventMeta";
 import { confidencePercent, timeAgo } from "@/lib/format";
 import type { DebunkedReport, Severity, VerifiedIncident } from "@/lib/types";
@@ -209,33 +210,35 @@ export default function Sidebar({
             ) : debunked.length === 0 ? (
               <EmptyState label="Nothing debunked in this view — the filter is watching." />
             ) : (
-              debunked.map((report, index) => (
-                <article
-                  key={report.id}
-                  style={{ animationDelay: `${index * 45}ms` }}
-                  className="animate-fade-up rounded-lg border border-amber-500/30 bg-slate-900 p-3.5 shadow"
-                >
-                  <div className="flex items-center gap-2">
-                    <ShieldX className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
-                    <h2 className="truncate text-sm font-bold text-slate-100">
-                      {report.author}
-                    </h2>
-                    <span className="ml-auto shrink-0 font-mono text-[11px] uppercase text-slate-500">
-                      {report.source} · {timeAgo(report.timestamp)}
-                    </span>
-                    {report.url && (
-                      <a
-                        href={report.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="shrink-0 text-slate-500 transition-colors hover:text-amber-400"
-                        aria-label="View original post"
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    )}
-                  </div>
+              debunked.map((report, index) => {
+                const resolvedUrl = getWorkingUrl(report.url, report.text, report.source, report.author);
+                return (
+                  <article
+                    key={report.id}
+                    style={{ animationDelay: `${index * 45}ms` }}
+                    className="animate-fade-up rounded-lg border border-amber-500/30 bg-slate-900 p-3.5 shadow"
+                  >
+                    <div className="flex items-center gap-2">
+                      <ShieldX className="h-4 w-4 shrink-0 text-amber-400" aria-hidden />
+                      <h2 className="truncate text-sm font-bold text-slate-100">
+                        {report.author}
+                      </h2>
+                      <span className="ml-auto shrink-0 font-mono text-[11px] uppercase text-slate-500">
+                        {report.source} · {timeAgo(report.timestamp)}
+                      </span>
+                      {resolvedUrl && (
+                        <a
+                          href={resolvedUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="shrink-0 text-slate-500 transition-colors hover:text-amber-400"
+                          aria-label="View original post"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
 
                   <p className="mt-2 line-clamp-3 text-xs italic text-slate-400">
                     “{report.text}”
@@ -263,7 +266,8 @@ export default function Sidebar({
                     </span>
                   </p>
                 </article>
-              ))
+                );
+              })
             ))}
         </div>
       )}
