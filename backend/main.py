@@ -562,6 +562,8 @@ async def get_mobidata_status(
             return False
         props = f.get("properties") or {}
         text = (
+            str(props.get("id") or "") + " " +
+            str(props.get("type") or "") + " " +
             str(props.get("description") or "") + " " +
             str(props.get("text") or "") + " " +
             str(props.get("reason") or "") + " " +

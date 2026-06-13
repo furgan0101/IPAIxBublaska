@@ -201,6 +201,9 @@ export default function CrisisMap({
 
   const [roadworks, setRoadworks] = useState<any>(null);
 
+  const focusLat = focus?.center?.[0];
+  const focusLng = focus?.center?.[1];
+
   useEffect(() => {
     fetch(`${API_BASE}/api/mobidata/roadworks`)
       .then((res) => res.json())
@@ -210,12 +213,14 @@ export default function CrisisMap({
         }
       })
       .catch((err) => console.error("Failed to fetch roadworks:", err));
-  }, []);
+  }, [focusLat, focusLng]);
 
   const isBlockedStreet = (feature: any) => {
     if (!feature || !feature.properties) return false;
     const props = feature.properties;
     const text = (
+      (props.id || "") + " " +
+      (props.type || "") + " " +
       (props.description || "") + " " +
       (props.text || "") + " " +
       (props.reason || "") + " " +
@@ -236,6 +241,8 @@ export default function CrisisMap({
     if (!feature || !feature.properties) return false;
     const props = feature.properties;
     const text = (
+      (props.id || "") + " " +
+      (props.type || "") + " " +
       (props.description || "") + " " +
       (props.text || "") + " " +
       (props.reason || "") + " " +
