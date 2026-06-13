@@ -72,6 +72,7 @@ class Geocoder:
         client: httpx.AsyncClient,
         place_hint: str | None,
         text: str,
+        bounded: bool = True,
     ) -> tuple[float, float] | None:
         """Best-effort coordinates for a report, or None (caller drops it).
 
@@ -85,40 +86,42 @@ class Geocoder:
                 return hit
             if self._settings.nominatim_enabled:
                 for candidate in place_candidates(place_hint):
-                    coords = await self._cached_nominatim(client, candidate)
+                    coords = await self._cached_nominatim(client, candidate, bounded)
                     if coords is not None:
                         return coords
         return gazetteer.find(text) if text else None
 
     async def _cached_nominatim(
-        self, client: httpx.AsyncClient, candidate: str
+        self, client: httpx.AsyncClient, candidate: str, bounded: bool = True
     ) -> tuple[float, float] | None:
-        cache_key = candidate.lower()
+        cache_key = candidate.lower() + ("_bounded" if bounded else "_unbounded")
         if self._store.geocode_has(cache_key):
             return self._store.geocode_get(cache_key)  # None == known miss
-        coords = await self._query_nominatim(client, candidate)
+        coords = await self._query_nominatim(client, candidate, bounded)
         self._store.geocode_put(cache_key, coords, datetime.now(timezone.utc))
         return coords
 
     async def _query_nominatim(
-        self, client: httpx.AsyncClient, place: str
+        self, client: httpx.AsyncClient, place: str, bounded: bool = True
     ) -> tuple[float, float] | None:
         async with self._lock:  # OSM policy: max ~1 request per second
             gap = MIN_REQUEST_GAP_S - (time.monotonic() - self._last_request)
             if gap > 0:
                 await asyncio.sleep(gap)
             self._last_request = time.monotonic()
+            params = {
+                "q": place,
+                "format": "jsonv2",
+                "limit": "1",
+                "countrycodes": "de,ch",
+            }
+            if bounded:
+                params["viewbox"] = SECTOR_VIEWBOX
+                params["bounded"] = "1"
             try:
                 response = await client.get(
                     NOMINATIM_URL,
-                    params={
-                        "q": place,
-                        "format": "jsonv2",
-                        "limit": "1",
-                        "countrycodes": "de,ch",
-                        "viewbox": SECTOR_VIEWBOX,
-                        "bounded": "1",  # local match or nothing
-                    },
+                    params=params,
                 )
                 response.raise_for_status()
                 results = response.json()

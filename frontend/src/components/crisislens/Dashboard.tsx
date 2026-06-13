@@ -95,6 +95,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [manualFocus, setManualFocus] = useState<MapFocus | null>(null);
   const [feedOpen, setFeedOpen] = useState(true);
+  const latestRequestQuery = useRef<string>("");
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, health, online, refresh } = useDashboard();
@@ -589,7 +590,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           {/* Map tint overlay — visible only before the user picks a location */}
           <div
             className={`pointer-events-none absolute inset-0 z-[999] bg-black transition-opacity duration-500 ${
-              manualFocus || searchQuery ? "opacity-0" : "opacity-50"
+              manualFocus || searchQuery || selected ? "opacity-0" : "opacity-50"
             }`}
             aria-hidden
           />
@@ -597,13 +598,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           {/* Floating Search Bar — centred until the user picks a location */}
           <div
             className={`pointer-events-none absolute left-1/2 z-[1000] -translate-x-1/2 px-4 transition-all duration-500 ease-in-out ${
-              manualFocus || searchQuery
+              manualFocus || searchQuery || selected
                 ? "bottom-6 top-auto -translate-y-0"
                 : "top-1/2 -translate-y-1/2"
             }`}
           >
             <div className="pointer-events-auto flex flex-col items-center gap-4">
-              {!manualFocus && !searchQuery && (
+              {!manualFocus && !searchQuery && !selected && (
                 <div className="mb-2 text-center">
                   <p className="font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg">
                     Where do you want to monitor?
@@ -615,7 +616,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
               )}
               <div
                 className={`flex items-center gap-3 rounded-2xl border-2 bg-white px-5 shadow-[0_8px_40px_rgba(0,0,0,0.5)] transition-all duration-500 dark:bg-zinc-900 ${
-                  manualFocus || searchQuery
+                  manualFocus || searchQuery || selected
                     ? "border-border py-2"
                     : "border-gold/70 py-4 ring-4 ring-gold/20"
                 }`}
@@ -638,12 +639,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                   }}
                   onKeyDown={async (e) => {
                     if (e.key === "Enter" && searchQuery.trim().length >= 2) {
+                      const queryToFetch = searchQuery.trim();
+                      latestRequestQuery.current = queryToFetch;
                       try {
                         const res = await fetch(
-                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(searchQuery)}`,
+                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
                         );
                         const data = await res.json();
-                        if (data.lat && data.lon) {
+                        if (latestRequestQuery.current === queryToFetch && data.lat && data.lon) {
                           setManualFocus({
                             center: [data.lat, data.lon],
                             zoom: 14,

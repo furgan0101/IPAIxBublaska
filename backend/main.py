@@ -491,8 +491,8 @@ async def get_geocode(q: str) -> dict[str, object]:
     if _geocoder is None or _geo_client is None:
         return {"error": "Geocoder not initialized"}
 
-    # Geocoder.resolve(client, place_hint, text)
-    coords = await _geocoder.resolve(_geo_client, q, "")
+    # Geocoder.resolve(client, place_hint, text, bounded)
+    coords = await _geocoder.resolve(_geo_client, q, "", bounded=False)
     if coords:
         return {"lat": coords[0], "lon": coords[1]}
     return {"error": "Location not found"}
