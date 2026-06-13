@@ -228,14 +228,13 @@ export default function CrisisMap({
   const focusKey = focus ? `${focus.center[0]},${focus.center[1]}` : null;
 
   useEffect(() => {
-    // Zoom out → immediately clear the overlay
-    if (!focusKey || !isZoomedIn) {
+    // City cleared → remove overlay immediately
+    if (!focusKey) {
       setRoadworks(null);
       return;
     }
 
-    // Zoom in (or new city search) → fetch after a short debounce so we
-    // don't hammer the API during the fly animation's intermediate zoom steps.
+    // New city searched → fetch roadworks once (after fly animation settles)
     const timer = window.setTimeout(() => {
       fetch(`${API_BASE}/api/mobidata/roadworks`)
         .then((res) => res.json())
@@ -246,7 +245,9 @@ export default function CrisisMap({
     }, 500);
 
     return () => window.clearTimeout(timer);
-  }, [focusKey, isZoomedIn]);
+    // Only re-run when the searched city changes — NOT on every zoom event.
+    // isZoomedIn only gates *display* (showRoadworks below), not the fetch.
+  }, [focusKey]);
 
   const isBlockedStreet = (feature: any) => {
     if (!feature || !feature.properties) return false;
