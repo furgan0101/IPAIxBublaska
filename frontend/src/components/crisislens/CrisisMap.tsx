@@ -205,6 +205,11 @@ export default function CrisisMap({
   const focusLng = focus?.center?.[1];
 
   useEffect(() => {
+    if (!focusLat || !focusLng) {
+      setRoadworks(null);
+      return;
+    }
+
     fetch(`${API_BASE}/api/mobidata/roadworks`)
       .then((res) => res.json())
       .then((data) => {
