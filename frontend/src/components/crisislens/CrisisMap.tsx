@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, Circle, useMapEvents, Polyline, Polygon } from "react-leaflet";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, Circle, useMapEvents, Polyline, Polygon, GeoJSON } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 import { type CrisisReport } from "@/lib/mockReports";
 import { TRUST_LEVELS, TRUST_META, trustLevel } from "@/lib/trust";
 import { MEASURE_KINDS, type PlacedMeasure, type MeasureKind } from "@/lib/measures";
+import { API_BASE } from "@/lib/types";
 
 /** Overview framing for the Baden-Württemberg sector. */
 const BW_CENTER: [number, number] = [48.62, 9.05];
@@ -198,6 +199,154 @@ export default function CrisisMap({
 }: CrisisMapProps) {
   const selected = reports.find((r) => r.id === selectedId) ?? null;
 
+  const [roadworks, setRoadworks] = useState<any>(null);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/mobidata/roadworks`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.features) {
+          setRoadworks(data);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch roadworks:", err));
+  }, []);
+
+  const isBlockedStreet = (feature: any) => {
+    if (!feature || !feature.properties) return false;
+    const props = feature.properties;
+    const text = (
+      (props.description || "") + " " +
+      (props.text || "") + " " +
+      (props.reason || "") + " " +
+      (props.constructionReason || "") + " " +
+      (props.location || "") + " " +
+      (props.place || "")
+    ).toLowerCase();
+    
+    return (
+      text.includes("sperr") || 
+      text.includes("block") || 
+      text.includes("closed") || 
+      text.includes("gesperrt")
+    );
+  };
+
+  const isHeavyTraffic = (feature: any) => {
+    if (!feature || !feature.properties) return false;
+    const props = feature.properties;
+    const text = (
+      (props.description || "") + " " +
+      (props.text || "") + " " +
+      (props.reason || "") + " " +
+      (props.constructionReason || "") + " " +
+      (props.location || "") + " " +
+      (props.place || "")
+    ).toLowerCase();
+    
+    return (
+      text.includes("stau") ||
+      text.includes("delay") ||
+      text.includes("congestion") ||
+      text.includes("verzöger") ||
+      text.includes("zähflüss") ||
+      text.includes("überlast")
+    );
+  };
+
+  const filterFeature = (feature: any) => {
+    return isBlockedStreet(feature) || isHeavyTraffic(feature);
+  };
+
+  const filterFeatureVector = (feature: any) => {
+    if (!filterFeature(feature)) return false;
+    // Render lines and polygons in GeoJSON. Points are handled as React markers.
+    return feature.geometry && feature.geometry.type !== "Point";
+  };
+
+  const roadworkStyle = (feature: any) => {
+    const blocked = isBlockedStreet(feature);
+    return {
+      color: blocked ? "#ef4444" : "#f97316", // Red for blocked, Orange for heavy traffic
+      weight: blocked ? 5.5 : 3.5, // Thicker red line for blocked streets
+      opacity: 0.9,
+      dashArray: blocked ? undefined : "6, 6", // Solid for blocked, dashed for traffic
+    };
+  };
+
+  const getTrafficIcon = (feature: any) => {
+    const blocked = isBlockedStreet(feature);
+    const symbol = blocked ? "⛔" : "⚠️";
+    const bgStyle = blocked
+      ? "background-color: rgba(239, 68, 68, 0.25); border: 2px solid rgb(239, 68, 68); color: rgb(239, 68, 68);"
+      : "background-color: rgba(249, 115, 22, 0.25); border: 2px solid rgb(249, 115, 22); color: rgb(249, 115, 22);";
+
+    return L.divIcon({
+      className: "cl-traffic-icon",
+      html: `<span class="cl-traffic-inner" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 9999px; font-size: 12px; font-weight: bold; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15), 0 2px 4px -1px rgba(0, 0, 0, 0.1); backdrop-filter: blur(2px); transition: transform 0.2s; ${bgStyle}">${symbol}</span>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    });
+  };
+
+  const trafficMarkers = useMemo(() => {
+    if (!roadworks || !roadworks.features) return [];
+    return roadworks.features.filter(filterFeature).map((feature: any, idx: number) => {
+      const geom = feature.geometry;
+      if (!geom) return null;
+      let latlng: [number, number] | null = null;
+      
+      if (geom.type === "Point") {
+        latlng = [geom.coordinates[1], geom.coordinates[0]];
+      } else if (geom.type === "LineString") {
+        const len = geom.coordinates.length;
+        if (len > 0) {
+          const midIdx = Math.floor(len / 2);
+          latlng = [geom.coordinates[midIdx][1], geom.coordinates[midIdx][0]];
+        }
+      } else if (geom.type === "MultiLineString") {
+        const line = geom.coordinates[0];
+        if (line && line.length > 0) {
+          const midIdx = Math.floor(line.length / 2);
+          latlng = [line[midIdx][1], line[midIdx][0]];
+        }
+      } else if (geom.type === "Polygon") {
+        const ring = geom.coordinates[0];
+        if (ring && ring.length > 0) {
+          const midIdx = Math.floor(ring.length / 2);
+          latlng = [ring[midIdx][1], ring[midIdx][0]];
+        }
+      }
+      
+      if (!latlng) return null;
+      
+      return {
+        id: feature.properties?.id || `traffic-marker-${idx}`,
+        latlng,
+        feature,
+      };
+    }).filter((m: any): m is NonNullable<typeof m> => m !== null);
+  }, [roadworks]);
+
+  const onEachFeature = (feature: any, layer: any) => {
+    if (feature.properties) {
+      const props = feature.properties;
+      const road = props.road || props.roadNumber || props.street || "";
+      const loc = props.location || props.place || props.name || "";
+      const desc = props.description || props.text || props.reason || props.constructionReason || "";
+      const blocked = isBlockedStreet(feature);
+      const title = blocked ? "Road Closure (Sperrung)" : "Heavy Traffic (Stau/Verzögerung)";
+      layer.bindTooltip(
+        `<div class="space-y-1 text-xs min-w-[160px] p-0.5">
+          <p class="font-bold ${blocked ? "text-red-500" : "text-orange-500"}">${title}${road ? ` · ${road}` : ""}</p>
+          ${loc ? `<p class="text-muted-foreground font-semibold">${loc}</p>` : ""}
+          ${desc ? `<p class="text-[10px] text-muted-foreground/80 leading-relaxed border-t border-border/40 pt-1 mt-1">${desc}</p>` : ""}
+        </div>`,
+        { direction: "top", offset: [0, -6], opacity: 0.95 }
+      );
+    }
+  };
+
   // Build icons keyed by "eventType-trustLevel-selected".
   // Falls back to trust-level-only key when eventType is unknown.
   const icons = useMemo(() => {
@@ -304,6 +453,54 @@ export default function CrisisMap({
       />
 
       <MapController selected={selected} focus={focus} />
+
+      {/* MobiData BW Roadworks and Closures Layer */}
+      {roadworks && (
+        <GeoJSON
+          key={`traffic-lines-${roadworks.features.length}-${theme}`}
+          data={roadworks}
+          filter={filterFeatureVector}
+          style={roadworkStyle}
+          onEachFeature={onEachFeature}
+        />
+      )}
+
+      {/* MobiData BW Traffic & Closure Markers */}
+      {trafficMarkers.map((m: any) => {
+        const blocked = isBlockedStreet(m.feature);
+        const title = blocked ? "Road Closure (Sperrung)" : "Heavy Traffic (Stau/Verzögerung)";
+        const props = m.feature.properties;
+        const road = props.road || props.roadNumber || props.street || "";
+        const loc = props.location || props.place || props.name || "";
+        const desc = props.description || props.text || props.reason || props.constructionReason || "";
+
+        return (
+          <Marker
+            key={m.id}
+            position={m.latlng}
+            icon={getTrafficIcon(m.feature)}
+          >
+            <Tooltip
+              direction="top"
+              offset={[0, -6]}
+              opacity={0.95}
+              className="cl-tooltip"
+            >
+              <div className="space-y-1 text-xs min-w-[160px] p-0.5">
+                <p className={`font-bold ${blocked ? "text-red-500" : "text-orange-500"}`}>
+                  {title}{road ? ` · ${road}` : ""}
+                </p>
+                {loc && <p className="text-muted-foreground font-semibold">{loc}</p>}
+                {desc && (
+                  <p className="text-[10px] text-muted-foreground/80 leading-relaxed border-t border-border/40 pt-1 mt-1">
+                    {desc}
+                  </p>
+                )}
+              </div>
+            </Tooltip>
+          </Marker>
+        );
+      })}
 
       {/* Enclosed Cycle Fills */}
       {polygons.map((poly) => (

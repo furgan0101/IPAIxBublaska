@@ -287,12 +287,17 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         base = base.filter((r) => r.confidence >= threshold);
       }
         
-      return [...base]
+      const sorted = [...base]
         .sort(
           (a, b) =>
             safeNewDate(b.timestamp).getTime() - safeNewDate(a.timestamp).getTime(),
         )
         .slice(0, 150);
+
+      if (sorted.length > 0 && sorted.length % 2 === 0) {
+        return sorted.slice(0, sorted.length - 1);
+      }
+      return sorted;
     },
     [allReports, region, activeTag, minConfidence],
   );

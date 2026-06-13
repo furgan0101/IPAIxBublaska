@@ -557,6 +557,23 @@ async def get_mobidata_status(
     closest_feature = None
     closest_dist = float("inf")
 
+    def is_blocked_or_heavy_traffic(f):
+        if not f or not isinstance(f, dict):
+            return False
+        props = f.get("properties") or {}
+        text = (
+            str(props.get("description") or "") + " " +
+            str(props.get("text") or "") + " " +
+            str(props.get("reason") or "") + " " +
+            str(props.get("constructionReason") or "") + " " +
+            str(props.get("location") or "") + " " +
+            str(props.get("place") or "")
+        ).lower()
+        
+        blocked = any(w in text for w in ("sperr", "block", "closed", "gesperrt"))
+        heavy = any(w in text for w in ("stau", "delay", "congestion", "verzöger", "zähflüss", "überlast"))
+        return blocked or heavy
+
     def get_first_coords(geom):
         if not geom or not isinstance(geom, dict):
             return None
@@ -577,6 +594,8 @@ async def get_mobidata_status(
 
     for f in features:
         if not isinstance(f, dict):
+            continue
+        if not is_blocked_or_heavy_traffic(f):
             continue
         geom = f.get("geometry")
         coords = get_first_coords(geom)
@@ -612,6 +631,19 @@ async def get_mobidata_status(
         distance_km=round(closest_dist, 1),
         url=url
     )
+
+
+@app.get("/api/mobidata/roadworks")
+async def get_mobidata_roadworks() -> dict[str, object]:
+    """Fetch the raw roadworks GeoJSON from MobiData BW."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            res = await client.get("https://api.mobidata-bw.de/datasets/traffic/roadworks/roadworks_geojson.json")
+            if res.status_code == 200:
+                return res.json()
+    except Exception as e:
+        return {"error": str(e), "type": "FeatureCollection", "features": []}
+    return {"type": "FeatureCollection", "features": []}
 
 
 @app.get("/api/debunked", response_model=list[DebunkedReport])
