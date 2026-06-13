@@ -622,13 +622,25 @@ app.add_middleware(
 
 
 @app.get("/api/incidents", response_model=list[VerifiedIncident])
-def get_incidents() -> list[VerifiedIncident]:
+def get_incidents(city: str | None = None) -> list[VerifiedIncident]:
     """Verified, geo-clustered incidents for the live map (mock-feed clusters
     plus the Mannheim-Rheinau live.json scenario)."""
-    return state["incidents"] + live_incidents + dynamic_incidents
+    all_incidents = state["incidents"] + live_incidents
+
+    if city:
+        city_lower = city.lower()
+        if city_lower in ["mannheim", "waldhof", "sandhofen"]:
+            # STRICT REQUIREMENT: Only mock data for Mannheim demo
+            return [
+                i for i in all_incidents 
+                if i.id.startswith("INC-MH-") or i.id.startswith("RPT-")
+            ]
+
+    return all_incidents
 
 
 @app.get("/api/dwd/status", response_model=DwdStatus)
+
 async def get_dwd_status(
     q: str | None = None,
     lat: float | None = None,

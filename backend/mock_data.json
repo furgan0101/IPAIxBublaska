@@ -828,6 +828,20 @@
       "media_url": "https://media.example.com/vost/hazmat_stg_but_tue.jpg"
     },
     {
+      "id": "RPT-061",
+      "source": "nina",
+      "author": "DWD",
+      "text": "WARNUNG vor STURMBÖEN (Level 2): Für Stadt Heilbronn treten Sturmböen mit Geschwindigkeiten bis 85 km/h (24m/s, 47kn, Bft 9) aus südwestlicher Richtung auf. In exponierten Lagen muss mit schweren Sturmböen bis 100 km/h (28m/s, 54kn, Bft 10) gerechnet werden.",
+      "event_type": "storm",
+      "lat": 49.1427,
+      "lon": 9.2109,
+      "timestamp": "2026-06-13T10:00:00Z",
+      "exif_timestamp": null,
+      "exif_lat": null,
+      "exif_lon": null,
+      "media_url": null
+    },
+    {
       "id": "RPT-060",
       "source": "twitter",
       "author": "@fr_evac",

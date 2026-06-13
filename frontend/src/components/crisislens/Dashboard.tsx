@@ -82,19 +82,19 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
   // Whenever the backend is reachable, show its real pipeline output —
   // mock_data.json verified, clustered and debunked through the same code
-  // path as live feeds. Only fall back to the bundled curated set when the
-  // API is unreachable, so the dashboard still has something to show
-  // (offline judging!).
+  // path as live feeds. We merge these with the bundled curated set so that
+  // cities outside the main demo scenario (like Heilbronn) still show data.
   const allReports: CrisisReport[] = useMemo(() => {
     const backendReports = (incidents?.length ?? 0) + (debunked?.length ?? 0);
     const adapted = online && backendReports > 0
       ? adaptAll(incidents ?? [], debunked ?? [])
-      : MOCK_REPORTS;
+      : [];
 
-    // Only Mannheim shows mock data; other search queries rely on LIVE data
-    return adapted.filter(
-      (r) => r.city === "Mannheim" || r.id.includes("LIVE-")
-    );
+    // Combine adapted backend reports with mock reports, avoiding ID collisions.
+    const adaptedIds = new Set(adapted.map(r => r.id));
+    const uniqueMocks = MOCK_REPORTS.filter(r => !adaptedIds.has(r.id));
+    
+    return [...adapted, ...uniqueMocks];
   }, [online, incidents, debunked]);
 
   // Map markers honour the header filters (event type + confidence) but NOT
@@ -105,7 +105,8 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       let filtered = allReports.filter(r => 
         r.id.startsWith("INC-") || // live incidents
         r.id.startsWith("RPT-") || // mock reports or direct injections
-        r.status === "ignored"     // debunked reports
+        r.status === "ignored"  || // debunked reports
+        /^[A-Z]{2}-/.test(r.id)    // city-prefixed mock reports (e.g. HN-0275)
       );
       if (activeTag) {
         filtered = filtered.filter((r) => r.crisisType === activeTag);
@@ -567,9 +568,11 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
 
             <div className="cl-scroll min-h-0 flex-1 overflow-y-auto p-3">
 
-            <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
-              <ReportTimeline reports={feed} decayShape={region?.name === "Mannheim"} />
-            </div>
+            {feed.length > 0 && (
+              <div className="mb-3 rounded-lg border border-border bg-card p-3.5 shadow-sm">
+                <ReportTimeline reports={feed} decayShape={region?.name === "Mannheim" && minConfidence <= 1} />
+              </div>
+            )}
             {feed.length === 0 ? (
               <p className="px-2 py-6 text-center text-xs leading-relaxed text-muted-foreground">
                 No current news{region ? ` for ${region.name}` : ""}.
@@ -604,9 +607,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                         </span>
                         <span className="mt-2 line-clamp-2 block text-xs leading-relaxed text-muted-foreground">
                           “{report.signalSnippet}”
-                        </span>
-                        <span className="mt-1.5 block truncate text-[10px] text-muted-foreground/70">
-                          {report.signalSource}
                         </span>
                       </button>
                     </li>
