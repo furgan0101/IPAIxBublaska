@@ -643,7 +643,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                       latestRequestQuery.current = queryToFetch;
                       try {
                         const res = await fetch(
-                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
+                          `${API_BASE}/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
                         );
                         const data = await res.json();
                         if (latestRequestQuery.current === queryToFetch && data.lat && data.lon) {
