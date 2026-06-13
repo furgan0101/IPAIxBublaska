@@ -157,10 +157,10 @@ export function adaptIncident(incident: VerifiedIncident): CrisisReport {
     }),
     riskLevel: RISK_BY_SEVERITY[incident.severity] ?? "Low",
     timestamp: incident.last_seen,
-    aiSummary: classified
-      ? `${incident.summary}.`
-      : (latestRationale ? `AI analyst: ${latestRationale} ` : "") +
-        `${incident.summary}.`,
+    aiSummary:
+      (latestRationale ? `AI analyst: ${latestRationale} ` : "") +
+      incident.summary,
+    actionHint: incident.action_hint,
     locationConfidence,
     reasonForDecision: `${incident.report_count} independent source${
       incident.report_count === 1 ? "" : "s"
@@ -264,11 +264,11 @@ export function adaptSource(
     timestamp: source.timestamp,
     aiSummary: source.ai_rationale ?? parent.summary,
     locationConfidence: 50,
-    reasonForDecision: `Corroborating source for incident ${parent.id}. Reliability: ${Math.round(
-      (source.ai_credibility ?? 0.5) * 100,
-    )}%`,
+    reasonForDecision: `Corroborating source for incident ${parent.id}. Reliability: ${
+      OFFICIAL_SOURCES.has(source.source) ? 95 : Math.round((source.ai_credibility ?? 0.5) * 100)
+    }%`,
     breakdown: {
-      sourceReliability: Math.round((source.ai_credibility ?? 0.5) * 100),
+      sourceReliability: OFFICIAL_SOURCES.has(source.source) ? 95 : Math.round((source.ai_credibility ?? 0.5) * 100),
       locationMatch: 50,
       mediaSupport: source.media_preview ? 70 : 30,
       crossSourceConfirmation: Math.round(parent.confidence_score * 100),
@@ -292,8 +292,12 @@ export function adaptAll(
   debunked: DebunkedReport[],
 ): CrisisReport[] {
   const incidentReports = incidents.map(adaptIncident);
+  // Single-source incidents are already fully represented by the
+  // incident-level entry — skip the redundant source-level clone.
   const sourceReports = incidents.flatMap((inc) =>
-    inc.sources.map((src) => adaptSource(src, inc)),
+    inc.sources.length > 1
+      ? inc.sources.map((src) => adaptSource(src, inc))
+      : [],
   );
   const debunkedReports = debunked.map(adaptDebunked);
 

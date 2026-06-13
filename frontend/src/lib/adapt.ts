@@ -117,7 +117,8 @@ export function incidentToReport(inc: VerifiedIncident): CrisisReport {
     confidence,
     riskLevel: RISK_BY_SEVERITY[inc.severity],
     timestamp: inc.last_seen,
-    aiSummary: `${inc.summary} Recommended action: ${inc.action_hint}`,
+    aiSummary: inc.summary,
+    actionHint: inc.action_hint,
     locationConfidence: clampPct(60 + inc.report_count * 10),
     reasonForDecision:
       status === "relevant"

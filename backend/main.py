@@ -753,8 +753,8 @@ app.add_middleware(
 @app.get("/api/incidents", response_model=list[VerifiedIncident])
 def get_incidents(city: str | None = None) -> list[VerifiedIncident]:
     """Verified, geo-clustered incidents for the live map (mock-feed clusters
-    plus the Mannheim-Rheinau live.json scenario)."""
-    all_incidents = state["incidents"] + live_incidents
+    plus the Mannheim-Rheinau live.json scenario and dynamic live polls)."""
+    all_incidents = state["incidents"] + live_incidents + dynamic_incidents
 
     if city:
         city_lower = city.lower()
@@ -763,6 +763,13 @@ def get_incidents(city: str | None = None) -> list[VerifiedIncident]:
             return [
                 i for i in all_incidents 
                 if i.id.startswith("INC-MH-") or i.id.startswith("RPT-")
+            ]
+        
+        if city_lower == "konstanz":
+            # STRICT REQUIREMENT: Only live data for Konstanz demo
+            return [
+                i for i in all_incidents
+                if i.id.startswith("INC-LIVE-") or i.id.startswith("RPT-LIVE-")
             ]
 
     return all_incidents

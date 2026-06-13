@@ -361,6 +361,11 @@ def action_hint(event_type: str, report_count: int, confidence: float) -> str:
             "Low corroboration — task recon for ground truth first. "
             f"If confirmed: {base[0].lower() + base[1:]}"
         )
+    
+    # Specific demo requirement: Mannheim fire mobility service for elderly
+    if event_type == "fire" and confidence >= 0.8:
+        return f"{base} Provide mobility services for the evacuation of elderly and non-mobile people."
+
     return base
 
 
