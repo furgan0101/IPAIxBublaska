@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   Activity,
   BarChart3,
@@ -88,10 +89,16 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [minConfidence, setMinConfidence] = useState(1);
   const [region, setRegion] = useState<RegionFocus | null>(DEFAULT_REGION);
   const [feedOpen, setFeedOpen] = useState(true);
+  const [searchDraft, setSearchDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchDismissed, setSearchDismissed] = useState(false);
   const [manualFocus, setManualFocus] = useState<MapFocus | null>(null);
-  const latestRequestQuery = useRef<string>("");
   const [hasSearched, setHasSearched] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const latestRequestQuery = useRef<string>("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const mapRegionRef = useRef<HTMLElement | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   // Live backend data (FastAPI :8000) — polls every 5 s.
   const { incidents, debunked, health, online, refresh } = useDashboard();
@@ -204,9 +211,19 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         const threshold = (minConfidence - 1) * 25;
         filtered = filtered.filter((r) => r.confidence >= threshold);
       }
+      if (deferredSearchQuery.trim()) {
+        const q = deferredSearchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (r) =>
+            r.city.toLowerCase().includes(q) ||
+            r.crisisType.toLowerCase().includes(q) ||
+            r.signalSnippet.toLowerCase().includes(q) ||
+            r.signalSource.toLowerCase().includes(q),
+        );
+      }
       return filtered;
     },
-    [allReports, activeTag, minConfidence],
+    [allReports, activeTag, minConfidence, deferredSearchQuery],
   );
 
   // All reports in the selected jurisdiction, before the header filters. The
@@ -216,6 +233,53 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     () =>
       region ? allReports.filter((r) => r.city === region.name) : allReports,
     [allReports, region],
+  );
+
+  const exitSearch = useCallback((): void => {
+    setSearchDismissed(true);
+    setSearchFocused(false);
+    setSearchDraft("");
+    setSearchQuery("");
+    setManualFocus(null);
+    searchInputRef.current?.blur();
+    const mapContainer = mapRegionRef.current?.querySelector<HTMLElement>(".leaflet-container");
+    if (mapContainer) {
+      mapContainer.tabIndex = -1;
+      mapContainer.focus();
+      return;
+    }
+    mapRegionRef.current?.focus();
+  }, []);
+
+  const handleSearchKeyDown = useCallback(
+    async (e: ReactKeyboardEvent<HTMLInputElement>): Promise<void> => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        exitSearch();
+        return;
+      }
+      if (e.key === "Enter" && searchDraft.trim().length >= 2) {
+        const queryToFetch = searchDraft.trim();
+        setSearchQuery(queryToFetch);
+        latestRequestQuery.current = queryToFetch;
+        setHasSearched(true);
+        try {
+          const res = await fetch(
+            `${API_BASE}/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
+          );
+          const data = await res.json();
+          if (latestRequestQuery.current === queryToFetch && data.lat && data.lon) {
+            setManualFocus({
+              center: [data.lat, data.lon],
+              zoom: 14,
+            });
+          }
+        } catch (err) {
+          console.error("Search geocoding failed", err);
+        }
+      }
+    },
+    [exitSearch, searchDraft],
   );
 
   const tagCounts = useMemo(() => {
@@ -248,14 +312,42 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     [reports, region],
   );
 
-  // Centre the map on the selected region; a selected incident overrides this
-  // inside MapController.
-  const cityFocus = useMemo<MapFocus | null>(
-    () =>
-      manualFocus ??
-      (region ? { center: region.center, zoom: 14 } : null),
-    [manualFocus, region],
-  );
+  const cityFocus = useMemo<MapFocus | null>(() => {
+    // 1. Manual map jump (from search)
+    if (manualFocus) return manualFocus;
+
+    // 2. Manual city focus (Command Mode)
+    if (focusCity && scopedReports.length > 0) {
+      const lat =
+        scopedReports.reduce((sum, r) => sum + r.coordinates[0], 0) /
+        scopedReports.length;
+      const lon =
+        scopedReports.reduce((sum, r) => sum + r.coordinates[1], 0) /
+        scopedReports.length;
+      return { center: [lat, lon], zoom: 12 };
+    }
+
+    // 3. Search results zoom
+    // If the user has typed something that filters the list, fly to the center of results.
+    const isSearching = deferredSearchQuery.trim().length >= 2;
+    if (isSearching && reports.length > 0) {
+      const lat =
+        reports.reduce((sum, r) => sum + r.coordinates[0], 0) / reports.length;
+      const lon =
+        reports.reduce((sum, r) => sum + r.coordinates[1], 0) / reports.length;
+
+      // If results are few or all in one city, zoom deep. Otherwise, overview.
+      const uniqueCities = new Set(reports.map((r) => r.city));
+      const zoom = (reports.length <= 3 || uniqueCities.size === 1) ? 14 : 10;
+
+      return { center: [lat, lon], zoom };
+    }
+
+    // 4. Default: the operator's home jurisdiction (e.g. Mannheim).
+    if (region) return { center: region.center, zoom: 14 };
+
+    return null;
+  }, [focusCity, scopedReports, reports, deferredSearchQuery, manualFocus, region]);
 
   const firstSignal = useMemo(
     () => (focusCity ? firstSignalAt(scopedReports) : null),
@@ -653,7 +745,12 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </aside>
 
         {/* Map column */}
-        <main className="relative min-w-0 flex-1">
+        <main
+          ref={mapRegionRef}
+          tabIndex={-1}
+          className="relative min-w-0 flex-1 focus:outline-none"
+          aria-label="Map region"
+        >
           {/* Feed toggle — anchored to the left edge of the map so it's always visible */}
           <button
             type="button"
@@ -694,7 +791,9 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           {/* Map tint overlay — visible only before the user picks a location */}
           <div
             className={`pointer-events-none absolute inset-0 z-[999] bg-black transition-opacity duration-500 ${
-              manualFocus || searchQuery || selected ? "opacity-0" : "opacity-50"
+              searchDismissed || manualFocus || searchDraft || searchQuery || selected
+                ? "opacity-0"
+                : "opacity-50"
             }`}
             aria-hidden
           />
@@ -702,13 +801,13 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
           {/* Floating Search Bar — centred until the user picks a location */}
           <div
             className={`pointer-events-none absolute left-1/2 z-[1000] -translate-x-1/2 px-4 transition-all duration-500 ease-in-out ${
-              manualFocus || searchQuery || selected
+              searchDismissed || manualFocus || searchDraft || searchQuery || selected
                 ? "bottom-6 top-auto -translate-y-0"
                 : "top-1/2 -translate-y-1/2"
             }`}
           >
             <div className="pointer-events-auto flex flex-col items-center gap-4">
-              {!manualFocus && !searchQuery && !selected && (
+              {!searchDismissed && !manualFocus && !searchDraft && !searchQuery && !selected && (
                 <div className="mb-2 text-center">
                   <p className="font-display text-2xl font-bold tracking-wide text-white drop-shadow-lg">
                     Where do you want to monitor?
@@ -720,60 +819,52 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
               )}
               <div
                 className={`flex items-center gap-3 rounded-2xl border-2 bg-white px-5 shadow-[0_8px_40px_rgba(0,0,0,0.5)] transition-all duration-500 dark:bg-zinc-900 ${
-                  manualFocus || searchQuery || selected
+                  manualFocus || searchDraft || searchQuery || selected
                     ? "border-border py-2"
                     : "border-gold/70 py-4 ring-4 ring-gold/20"
                 }`}
               >
                 <Search
                   className={`shrink-0 transition-all duration-500 ${
-                    manualFocus || searchQuery
+                    manualFocus || searchDraft || searchQuery
                       ? "h-4 w-4 text-gold"
                       : "h-5 w-5 text-gold"
                   }`}
                 />
                 <input
+                  ref={searchInputRef}
                   type="text"
                   placeholder="e.g. Konstanz, Stuttgart, Freiburg…"
-                  value={searchQuery}
-                  autoFocus={!manualFocus}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    if (!e.target.value) setManualFocus(null);
+                  value={searchDraft}
+                  autoFocus={!manualFocus && !searchDismissed}
+                  onFocus={() => {
+                    setSearchFocused(true);
+                    setSearchDismissed(false);
                   }}
-                  onKeyDown={async (e) => {
-                    if (e.key === "Enter" && searchQuery.trim().length >= 2) {
-                      const queryToFetch = searchQuery.trim();
-                      latestRequestQuery.current = queryToFetch;
-                      try {
-                        const res = await fetch(
-                          `${API_BASE}/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
-                        );
-                        const data = await res.json();
-                        if (latestRequestQuery.current === queryToFetch && data.lat && data.lon) {
-                          setManualFocus({
-                            center: [data.lat, data.lon],
-                            zoom: 14,
-                          });
-                          setHasSearched(true);
-                        }
-                      } catch (err) {
-                        console.error("Search geocoding failed", err);
-                      }
+                  onBlur={() => setSearchFocused(false)}
+                  onChange={(e) => {
+                    setSearchDismissed(false);
+                    setSearchDraft(e.target.value);
+                    if (!e.target.value) {
+                      setSearchQuery("");
+                      setManualFocus(null);
                     }
                   }}
+                  onKeyDown={handleSearchKeyDown}
                   className={`bg-transparent font-mono text-zinc-900 placeholder-zinc-400 focus:outline-none dark:text-white dark:placeholder-zinc-500 ${
-                    manualFocus || searchQuery
+                    manualFocus || searchDraft || searchQuery
                       ? "w-72 text-sm lg:w-96"
                       : "w-80 text-base lg:w-[480px]"
                   }`}
                 />
-                {searchQuery && (
+                {searchFocused && (
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400 dark:text-zinc-500">
+                    Esc to exit
+                  </span>
+                )}
+                {(searchDraft || searchQuery) && (
                   <button
-                    onClick={() => {
-                      setSearchQuery("");
-                      setManualFocus(null);
-                    }}
+                    onClick={exitSearch}
                     title="Clear search"
                     className="rounded-full p-1 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-white"
                   >
