@@ -18,7 +18,10 @@ export function getWorkingUrl(
 
   // 1. Weather alerts (DWD, warning apps)
   if (cleanTitle.includes("dwd") || src.includes("dwd")) {
-    return "https://www.dwd.de";
+    // Extract city name from title if present, else fall back to Mannheim
+    const cityMatch = title.match(/([A-ZÄÖÜ][a-zäöü]+(?:\s[A-ZÄÖÜ][a-zäöü]+)?)/u);
+    const city = cityMatch ? encodeURIComponent(cityMatch[0]) : "Mannheim";
+    return `https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html?ort=${city}`;
   }
   if (cleanTitle.includes("warn-app") || cleanTitle.includes("nina") || src.includes("nina") || src.includes("warn")) {
     return "https://warnung.bund.de";

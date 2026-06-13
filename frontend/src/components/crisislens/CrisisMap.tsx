@@ -14,6 +14,8 @@ import { API_BASE } from "@/lib/types";
 const BW_CENTER: [number, number] = [48.62, 9.05];
 const BW_ZOOM = 8;
 const FOCUS_ZOOM = 15;
+/** Roadworks are only shown at or above the city-search zoom level. */
+const ROADWORKS_MIN_ZOOM = 14;
 
 /** Wait for the detail-panel width transition (500 ms) before flying. */
 const FLY_DELAY_MS = 560;
@@ -221,27 +223,30 @@ export default function CrisisMap({
   const [roadworks, setRoadworks] = useState<any>(null);
   const [currentZoom, setCurrentZoom] = useState(BW_ZOOM);
 
-  const focusLat = focus?.center?.[0];
-  const focusLng = focus?.center?.[1];
-  const isZoomedIn = currentZoom >= 12;
+  const isZoomedIn = currentZoom >= ROADWORKS_MIN_ZOOM;
+
+  const focusKey = focus ? `${focus.center[0]},${focus.center[1]}` : null;
 
   useEffect(() => {
-    // Instantly clear/flush old roadworks overlays
-    setRoadworks(null);
-
-    if (!isZoomedIn || !focusLat || !focusLng) {
+    // Zoom out → immediately clear the overlay
+    if (!focusKey || !isZoomedIn) {
+      setRoadworks(null);
       return;
     }
 
-    fetch(`${API_BASE}/api/mobidata/roadworks`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (data && data.features) {
-          setRoadworks(data);
-        }
-      })
-      .catch((err) => console.error("Failed to fetch roadworks:", err));
-  }, [isZoomedIn, focusLat, focusLng]);
+    // Zoom in (or new city search) → fetch after a short debounce so we
+    // don't hammer the API during the fly animation's intermediate zoom steps.
+    const timer = window.setTimeout(() => {
+      fetch(`${API_BASE}/api/mobidata/roadworks`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.features) setRoadworks(data);
+        })
+        .catch((err) => console.error("Failed to fetch roadworks:", err));
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [focusKey, isZoomedIn]);
 
   const isBlockedStreet = (feature: any) => {
     if (!feature || !feature.properties) return false;
@@ -473,7 +478,7 @@ export default function CrisisMap({
     }).filter((p): p is NonNullable<typeof p> => p !== null);
   }, [reports, selectedId]);
 
-  const showRoadworks = roadworks && isZoomedIn;
+  const showRoadworks = roadworks && isZoomedIn && !!focusKey;
 
   return (
     <MapContainer
@@ -495,7 +500,7 @@ export default function CrisisMap({
       {/* MobiData BW Roadworks and Closures Layer */}
       {showRoadworks && (
         <GeoJSON
-          key={`traffic-lines-${roadworks.features.length}-${theme}`}
+          key={`traffic-lines-${focusKey}-${roadworks.features.length}-${theme}`}
           data={roadworks}
           filter={filterFeatureVector}
           style={roadworkStyle}

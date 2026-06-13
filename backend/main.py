@@ -73,6 +73,7 @@ from schemas import (
     ReportSubmission,
     SubmissionResult,
     VerifiedIncident,
+    SourceReport,
 )
 
 DATA_FILE: Path = Path(__file__).parent / "mock_data.json"
@@ -105,6 +106,7 @@ state: PipelineState = {"credible": [], "incidents": [], "debunked": [], "live_s
 # its own list so live report injection (which re-clusters `state`) never wipes
 # it, and so the mock-only pipeline tests can inspect `state` in isolation.
 live_incidents: list[VerifiedIncident] = []
+dynamic_incidents: list[VerifiedIncident] = []
 
 # Live ingestion (FEEDS_ENABLED=true): created during lifespan, None in mock mode.
 ingestion_service: IngestionService | None = None
@@ -152,6 +154,247 @@ def run_pipeline(reports: list[RawReport]) -> PipelineResult:
     return {"incidents": incidents, "debunked": debunked}
 
 
+ARS_MAPPING: dict[str, str] = {
+    "heilbronn": "081210000000",
+    "konstanz": "083350000000",
+    "stuttgart": "081110000000",
+    "karlsruhe": "082120000000",
+    "heidelberg": "082210000000",
+    "freiburg": "083110000000",
+    "ulm": "084210000000",
+    "pforzheim": "082310000000",
+    "reutlingen": "084150000000",
+    "tuebingen": "084160000000",
+    "esslingen": "081160000000",
+    "ludwigsburg": "081180000000",
+    "goeppingen": "081170000000",
+    "aalen": "081360000000",
+}
+
+
+async def fetch_dynamic_live_alerts(q: str, lat: float, lon: float) -> list[VerifiedIncident]:
+    incidents: list[VerifiedIncident] = []
+    
+    # 1. DWD Alerts from Bright Sky API
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get(f"https://api.brightsky.dev/alerts?lat={lat}&lon={lon}")
+            if res.status_code == 200:
+                alerts_data = res.json()
+                for alert in alerts_data.get("alerts") or []:
+                    alert_id = alert.get("id") or str(hash(alert.get("headline", "")))
+                    headline = alert.get("headline", "").strip() or alert.get("headline_de", "").strip() or "Amtliche Warnung"
+                    desc = alert.get("description", "").strip() or alert.get("description_de", "").strip() or ""
+                    
+                    sent_str = alert.get("effective_utc") or alert.get("onset_utc") or datetime.now(timezone.utc).isoformat()
+                    try:
+                        timestamp = datetime.fromisoformat(sent_str.replace("Z", "+00:00"))
+                    except Exception:
+                        timestamp = datetime.now(timezone.utc)
+                    
+                    severity_raw = alert.get("severity", "").lower()
+                    severity = "moderate"
+                    if severity_raw in ("severe", "extreme", "high"):
+                        severity = "high"
+                    elif severity_raw in ("minor", "low"):
+                        severity = "low"
+                        
+                    inc_id = f"INC-LIVE-DWD-{alert_id}"
+                    
+                    # Create SourceReport
+                    src = SourceReport(
+                        id=f"RPT-LIVE-DWD-{alert_id}",
+                        source="dwd",
+                        author="DWD",
+                        text=f"{headline}: {desc}" if desc else headline,
+                        timestamp=timestamp,
+                        url="https://www.dwd.de",
+                        media_preview=None,
+                        ai_rationale=f"Official weather warning issued by DWD for {q}.",
+                        ai_media_note=None,
+                        ai_credibility=1.0
+                    )
+                    
+                    # Create VerifiedIncident
+                    incident = VerifiedIncident(
+                        id=inc_id,
+                        event_type="storm",
+                        lat=lat,
+                        lon=lon,
+                        confidence_score=1.0,
+                        ai_credibility=1.0,
+                        source_ids=[src.id],
+                        report_count=1,
+                        first_seen=timestamp,
+                        last_seen=timestamp,
+                        summary=headline,
+                        severity=severity,
+                        action_hint="Warn of falling trees and debris; prioritise road-clearance crews on the affected routes.",
+                        sources=[src],
+                        related_incidents=[]
+                    )
+                    incidents.append(incident)
+    except Exception as e:
+        logging.warning("Failed to fetch dynamic DWD alerts: %s", e)
+
+    # 2. NINA warnings matching city query
+    q_norm = q.lower().replace("ß", "ss").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").strip()
+    ars = ARS_MAPPING.get(q_norm)
+    if ars:
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                res = await client.get(f"https://warnung.bund.de/api31/dashboard/{ars}.json")
+                if res.status_code == 200:
+                    warnings = res.json() or []
+                    for idx, entry in enumerate(warnings):
+                        warning_id = entry.get("id")
+                        if not warning_id:
+                            continue
+                        payload_data = (entry.get("payload") or {}).get("data") or {}
+                        headline = (
+                            payload_data.get("headline")
+                            or (entry.get("i18nTitle") or {}).get("de")
+                            or "Gefahrenmeldung"
+                        ).strip()
+                        desc = payload_data.get("description", "").strip()
+                        provider = str(payload_data.get("provider") or "NINA").upper()
+                        
+                        sent_str = entry.get("sent") or entry.get("startDate") or datetime.now(timezone.utc).isoformat()
+                        try:
+                            timestamp = datetime.fromisoformat(sent_str.replace("Z", "+00:00"))
+                        except Exception:
+                            timestamp = datetime.now(timezone.utc)
+                            
+                        # Add a small offset to prevent exact pin overlapping
+                        offset_lat = lat + (idx * 0.002)
+                        offset_lon = lon + (idx * 0.002)
+                        
+                        inc_id = f"INC-LIVE-NINA-{warning_id}"
+                        src = SourceReport(
+                            id=f"RPT-LIVE-NINA-{warning_id}",
+                            source="nina",
+                            author=provider,
+                            text=f"{headline}: {desc}" if desc else headline,
+                            timestamp=timestamp,
+                            url="https://warnung.bund.de/meldungen",
+                            media_preview=None,
+                            ai_rationale=f"Official NINA warning issued by {provider} for region {q}.",
+                            ai_media_note=None,
+                            ai_credibility=1.0
+                        )
+                        
+                        incident = VerifiedIncident(
+                            id=inc_id,
+                            event_type="infrastructure_failure",
+                            lat=offset_lat,
+                            lon=offset_lon,
+                            confidence_score=1.0,
+                            ai_credibility=1.0,
+                            source_ids=[src.id],
+                            report_count=1,
+                            first_seen=timestamp,
+                            last_seen=timestamp,
+                            summary=headline,
+                            severity="moderate",
+                            action_hint="Identify affected lifeline systems, activate redundancy plans and inform operators' crisis cells.",
+                            sources=[src],
+                            related_incidents=[]
+                        )
+                        incidents.append(incident)
+        except Exception as e:
+            logging.warning("Failed to fetch dynamic NINA warnings: %s", e)
+
+    # 3. PEGELONLINE Water level warning
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            res = await client.get(
+                f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations.json?"
+                f"latitude={lat}&longitude={lon}&radius=30"
+                f"&includeTimeseries=true&includeCurrentMeasurement=true"
+            )
+            if res.status_code == 200:
+                stations = res.json() or []
+                for idx, station in enumerate(stations):
+                    # Check if station has timeseries and current measurement for water level 'W'
+                    timeseries = station.get("timeseries") or []
+                    w_ts = None
+                    for ts in timeseries:
+                        if ts.get("shortname") == "W" and ts.get("currentMeasurement"):
+                            w_ts = ts
+                            break
+                    if not w_ts:
+                        continue
+                        
+                    curr = w_ts["currentMeasurement"]
+                    val = curr.get("value")
+                    state_raw = curr.get("stateMnwMhw") or "normal"
+                    if state_raw.lower() not in ("low", "niedrigwasser", "mnw", "high", "hochwasser", "mhw", "above_mhw"):
+                        continue # Skip normal levels for alert lists
+                        
+                    # Determine event class & description
+                    is_high = state_raw.lower() in ("high", "hochwasser", "mhw", "above_mhw")
+                    event_type = "flood" if is_high else "water_supply"
+                    state_display = "Hochwasser" if is_high else "Niedrigwasser"
+                    
+                    station_name = station.get("shortname", "Unknown Station")
+                    water_name = station.get("water", {}).get("longname") or "RHEIN"
+                    
+                    st_lat = station.get("latitude") or lat
+                    st_lon = station.get("longitude") or lon
+                    
+                    headline = f"Water Level Alert ({state_display}): Station {station_name}"
+                    desc = f"PEGELONLINE station {station_name} on water body {water_name} reports {state_display} level of {val} {w_ts.get('unit', 'cm')}."
+                    
+                    sent_str = curr.get("timestamp") or datetime.now(timezone.utc).isoformat()
+                    try:
+                        timestamp = datetime.fromisoformat(sent_str.replace("Z", "+00:00"))
+                    except Exception:
+                        timestamp = datetime.now(timezone.utc)
+                        
+                    inc_id = f"INC-LIVE-PEGEL-{station_name}"
+                    src = SourceReport(
+                        id=f"RPT-LIVE-PEGEL-{station_name}",
+                        source="pegelonline",
+                        author="PEGELONLINE",
+                        text=desc,
+                        timestamp=timestamp,
+                        url=f"https://www.pegelonline.wsv.de",
+                        media_preview=None,
+                        ai_rationale=f"PEGELONLINE sensor alert near {q}.",
+                        ai_media_note=None,
+                        ai_credibility=1.0
+                    )
+                    
+                    action_hint_text = (
+                        "Close affected waterfront paths, deploy pumping crews and monitor the water level gauge."
+                        if is_high else
+                        "Coordinate emergency water distribution points and issue boil-water advisories where applicable."
+                    )
+                    
+                    incident = VerifiedIncident(
+                        id=inc_id,
+                        event_type=event_type,
+                        lat=st_lat,
+                        lon=st_lon,
+                        confidence_score=1.0,
+                        ai_credibility=1.0,
+                        source_ids=[src.id],
+                        report_count=1,
+                        first_seen=timestamp,
+                        last_seen=timestamp,
+                        summary=headline,
+                        severity="moderate",
+                        action_hint=action_hint_text,
+                        sources=[src],
+                        related_incidents=[]
+                    )
+                    incidents.append(incident)
+    except Exception as e:
+        logging.warning("Failed to fetch dynamic PEGELONLINE warnings: %s", e)
+
+    return incidents
+
+
 def reset_state() -> None:
     """(Re)load the mock feed and rebuild the in-memory pipeline state."""
     now = datetime.now(timezone.utc)
@@ -161,8 +404,9 @@ def reset_state() -> None:
     state["debunked"] = debunked
     state["incidents"] = cluster_reports(credible)
     state["live_seq"] = 0
-    global live_incidents
+    global live_incidents, dynamic_incidents
     live_incidents = build_live_incidents(now)
+    dynamic_incidents = []
 
 
 def submit_report(submission: ReportSubmission) -> SubmissionResult:
@@ -295,7 +539,7 @@ app.add_middleware(
 def get_incidents() -> list[VerifiedIncident]:
     """Verified, geo-clustered incidents for the live map (mock-feed clusters
     plus the Mannheim-Rheinau live.json scenario)."""
-    return state["incidents"] + live_incidents
+    return state["incidents"] + live_incidents + dynamic_incidents
 
 
 @app.get("/api/dwd/status", response_model=DwdStatus)
@@ -667,6 +911,8 @@ async def post_reset() -> dict[str, str | int]:
         await ingestion_service.reset()
     else:
         reset_state()
+    global dynamic_incidents
+    dynamic_incidents = []
     return {
         "status": "reset",
         "incidents": len(state["incidents"]),
@@ -675,8 +921,31 @@ async def post_reset() -> dict[str, str | int]:
 
 
 @app.post("/api/poll")
-async def post_poll() -> dict[str, object]:
+async def post_poll(
+    q: str | None = None,
+    lat: float | None = None,
+    lon: float | None = None
+) -> dict[str, object]:
     """Trigger one live ingest cycle on demand (live mode only)."""
+    global dynamic_incidents
+    
+    if q and q.strip().lower() == "mannheim":
+        dynamic_incidents = []
+        return {
+            "status": "polled-mannheim",
+            "detail": "Mannheim uses mock-only data. Cleared dynamic incidents.",
+            "stats": {"new_verified": 0}
+        }
+        
+    if lat is not None and lon is not None:
+        fetched = await fetch_dynamic_live_alerts(q or "Search Location", lat, lon)
+        dynamic_incidents = fetched
+        return {
+            "status": "polled-dynamic",
+            "count": len(fetched),
+            "stats": {"new_verified": len(fetched)}
+        }
+        
     if ingestion_service is None:
         return {
             "status": "mock-mode",

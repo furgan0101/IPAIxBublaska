@@ -53,10 +53,14 @@ export default function AnalyticsPage() {
       : "mock";
 
   const reports: CrisisReport[] = useMemo(
-    () =>
-      mode === "live"
+    () => {
+      const base = mode === "live"
         ? adaptAll(incidents ?? [], debunked ?? [])
-        : MOCK_REPORTS,
+        : MOCK_REPORTS;
+      return base.filter(
+        (r) => r.city === "Mannheim" || r.id.includes("LIVE-")
+      );
+    },
     [mode, incidents, debunked],
   );
 

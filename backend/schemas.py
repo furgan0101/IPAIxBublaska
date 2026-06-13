@@ -199,7 +199,7 @@ class DwdStatus(BaseModel):
     headline: str | None = None
     description: str | None = None
     timestamp: datetime | None = None
-    url: str = "https://www.dwd.de"
+    url: str = "https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html"
     temperature: float | None = None
 
 

@@ -281,55 +281,64 @@ function PanelContent({
         )}
 
         <section>
-          <SectionLabel>Evidence ({report.evidenceLinks.length})</SectionLabel>
-          <ul className="mt-2.5 space-y-2">
-            {report.evidenceLinks.map((evidence) => {
-              const Icon = SOURCE_ICONS[evidence.sourceType];
-              const cred = CREDIBILITY_META[evidence.credibility];
-              return (
-                <li key={evidence.title}>
-                  <a
-                    href={evidence.href}
-                    {...(evidence.href === "#"
-                      ? { onClick: (e: React.MouseEvent) => e.preventDefault() }
-                      : { target: "_blank", rel: "noopener noreferrer" })}
-                    className="group flex items-center gap-3 rounded-lg border border-border bg-card p-3.5 transition-colors hover:bg-muted/60"
-                  >
-                    {evidence.mediaPreview ? (
-                      // eslint-disable-next-line @next/next/no-img-element -- arbitrary remote OSINT hosts
-                      <img
-                        src={evidence.mediaPreview}
-                        alt=""
-                        loading="lazy"
-                        className="h-9 w-9 shrink-0 rounded-md border border-border object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
-                      />
-                    ) : (
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
-                        <Icon className="h-4 w-4" />
-                      </span>
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-medium text-foreground">
-                        {evidence.title}
-                      </span>
-                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                        {evidence.sourceType} · {timeAgo(evidence.time)}
-                      </span>
+          <SectionLabel>Evidence</SectionLabel>
+          {report.evidenceLinks.length === 0 ? (
+            <p className="mt-2.5 text-[13px] text-muted-foreground">No evidence links available.</p>
+          ) : (() => {
+            const evidence = report.evidenceLinks[0];
+            const Icon = SOURCE_ICONS[evidence.sourceType];
+            const cred = CREDIBILITY_META[evidence.credibility];
+            const isPlaceholder = evidence.href === "#";
+            return (
+              <div className="mt-2.5 rounded-lg border border-border bg-card overflow-hidden">
+                {/* Source header row */}
+                <div className="flex items-center gap-3 p-3.5 border-b border-border/60">
+                  {evidence.mediaPreview ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- arbitrary remote OSINT hosts
+                    <img
+                      src={evidence.mediaPreview}
+                      alt=""
+                      loading="lazy"
+                      className="h-9 w-9 shrink-0 rounded-md border border-border object-cover"
+                      onError={(e) => { e.currentTarget.style.display = "none"; }}
+                    />
+                  ) : (
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground">
+                      <Icon className="h-4 w-4" />
                     </span>
-                    <span
-                      className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${cred.cls}`}
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-medium text-foreground">
+                      {evidence.title}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                      {evidence.sourceType} · {timeAgo(evidence.time)}
+                    </span>
+                  </span>
+                  <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${cred.cls}`}>
+                    {cred.label}
+                  </span>
+                </div>
+
+                {/* URL row */}
+                <div className="flex items-center gap-2 px-3.5 py-2.5 bg-muted/40">
+                  <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                  {isPlaceholder ? (
+                    <span className="font-mono text-[11px] text-muted-foreground italic">URL not available</span>
+                  ) : (
+                    <a
+                      href={evidence.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-mono text-[11px] text-gold truncate hover:underline"
                     >
-                      {cred.label}
-                    </span>
-                    <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
-                  </a>
-                </li>
-              );
-            })}
-          </ul>
+                      {evidence.href}
+                    </a>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </section>
       </div>
 

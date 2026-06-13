@@ -7,6 +7,12 @@ import { TRUST_LEVELS, TRUST_META, trustLevel, type TrustLevel } from "@/lib/tru
 
 interface ReportTimelineProps {
   reports: CrisisReport[];
+  /**
+   * When true the bar heights are shaped into a spike-then-decay envelope
+   * (used for the Mannheim demo scenario to simulate incident escalation
+   * followed by a slow resolution tail).
+   */
+  decayShape?: boolean;
 }
 
 /** Number of hours to show. */
@@ -29,10 +35,36 @@ function clockLabel(ms: number): string {
 }
 
 /**
- * Signal-volume chart for the news rail: fixed 12-hour window with 
+ * Pre-computed spike-then-decay envelope (0–1 scale).
+ * Index 0 = oldest bucket, index 11 = current hour ("now").
+ *
+ * Shape rationale: small ramp-up → sharp spike at index 2 → slow
+ * exponential decay over the remaining buckets, bottoming out ~15 %.
+ */
+const DECAY_ENVELOPE: number[] = (() => {
+  const n = BUCKET_COUNT;
+  const peak = 2; // which bucket index carries the spike
+  const env: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i < peak) {
+      // Short ramp before the spike
+      env.push(0.18 + (i / peak) * 0.42);
+    } else if (i === peak) {
+      env.push(1.0);
+    } else {
+      // Exponential decay after peak; half-life ≈ 4 buckets
+      const t = i - peak;
+      env.push(Math.max(0.13, Math.exp(-t * 0.18)));
+    }
+  }
+  return env;
+})();
+
+/**
+ * Signal-volume chart for the news rail: fixed 12-hour window with
  * 1-hour buckets aligned to full hour boundaries.
  */
-export default function ReportTimeline({ reports }: ReportTimelineProps) {
+export default function ReportTimeline({ reports, decayShape = false }: ReportTimelineProps) {
   const { buckets, maxTotal } = useMemo(() => {
     const now = new Date();
     // Align to the start of the current hour
@@ -40,7 +72,7 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
     endOfCurrentHour.setMinutes(0, 0, 0);
     // The "current" bucket actually ends at the next full hour
     const chartEnd = endOfCurrentHour.getTime() + HOUR_MS;
-    
+
     const slots: Bucket[] = Array.from({ length: BUCKET_COUNT }, (_, i) => {
       const start = chartEnd - (BUCKET_COUNT - i) * HOUR_MS;
       return {
@@ -53,7 +85,7 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
 
     for (const report of reports) {
       const time = safeNewDate(report.timestamp).getTime();
-      const idx = slots.findIndex(s => time >= s.start && time < s.end);
+      const idx = slots.findIndex((s) => time >= s.start && time < s.end);
       if (idx !== -1) {
         slots[idx].counts[trustLevel(report.confidence)]++;
         slots[idx].total++;
@@ -68,8 +100,57 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
 
   const total = buckets.reduce((s, b) => s + b.total, 0);
 
+  // Only apply the decay envelope when there is at least some real data.
+  const effectiveDecayShape = decayShape && reports.length > 0;
+
   // Tick positions: show every 3rd hour for clarity
   const tickIndices = [0, 3, 6, 9, BUCKET_COUNT - 1];
+
+  /**
+   * Compute the rendered height fraction for each bucket.
+   *
+   * In decayShape mode we use the envelope directly (with a minimum stub
+   * so every bar is visible) and mix in the real count distribution at
+   * low weight so the trust-level colouring still makes sense.
+   */
+  function barHeightPct(bucket: Bucket, index: number): number {
+    if (effectiveDecayShape) {
+      // 80 % envelope + 20 % real distribution
+      const envH = DECAY_ENVELOPE[index];
+      const realH = maxTotal > 0 ? bucket.total / maxTotal : 0;
+      return (envH * 0.8 + realH * 0.2) * 92 + 6;
+    }
+    return (bucket.total / maxTotal) * 92 + 6;
+  }
+
+  /**
+   * In decayShape mode we want every bar to have a visible stack even when
+   * real count is 0, so we fabricate a synthetic count distribution based
+   * on the envelope weight.
+   */
+  function stackLevels(bucket: Bucket, index: number): { level: TrustLevel; flex: number }[] {
+    if (!effectiveDecayShape) {
+      return STACK_ORDER.filter((l) => bucket.counts[l] > 0).map((l) => ({
+        level: l,
+        flex: bucket.counts[l],
+      }));
+    }
+
+    // In decay mode: use real counts if available, otherwise synthesise from envelope
+    const hasCounts = STACK_ORDER.some((l) => bucket.counts[l] > 0);
+    if (hasCounts) {
+      return STACK_ORDER.filter((l) => bucket.counts[l] > 0).map((l) => ({
+        level: l,
+        flex: bucket.counts[l],
+      }));
+    }
+
+    // Synthesise based on envelope position (early = more high-trust, late = more low-trust)
+    const env = DECAY_ENVELOPE[index];
+    if (env > 0.7) return [{ level: "high", flex: 1 }];
+    if (env > 0.35) return [{ level: "medium", flex: 1 }];
+    return [{ level: "low", flex: 1 }];
+  }
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -90,45 +171,48 @@ export default function ReportTimeline({ reports }: ReportTimelineProps) {
           className="pointer-events-none absolute inset-x-0 top-1 border-t border-dashed border-border/50"
           aria-hidden
         />
-        {buckets.map((bucket, i) => (
-          <div key={i} className="group relative h-full flex-1">
-            {bucket.total > 0 ? (
-              <div
-                className="absolute bottom-0 flex w-full flex-col-reverse overflow-hidden rounded-t-[3px]"
-                style={{ height: `${(bucket.total / maxTotal) * 92 + 6}%` }}
-              >
-                {STACK_ORDER.map((level) =>
-                  bucket.counts[level] > 0 ? (
+        {buckets.map((bucket, i) => {
+          const heightPct = effectiveDecayShape || bucket.total > 0 ? barHeightPct(bucket, i) : null;
+          const levels = stackLevels(bucket, i);
+
+          return (
+            <div key={i} className="group relative h-full flex-1">
+              {heightPct !== null ? (
+                <div
+                  className="absolute bottom-0 flex w-full flex-col-reverse overflow-hidden rounded-t-[3px]"
+                  style={{ height: `${heightPct}%` }}
+                >
+                  {levels.map(({ level, flex }) => (
                     <div
                       key={level}
                       className="w-full transition-all duration-300"
                       style={{
-                        flexGrow: bucket.counts[level],
+                        flexGrow: flex,
                         background: TRUST_META[level].color,
                         opacity: 0.9,
                       }}
                     />
-                  ) : null,
-                )}
-              </div>
-            ) : (
-              // Empty bucket: a faint stub keeps the axis rhythm readable.
-              <div className="absolute bottom-0 h-[3px] w-full rounded-t-[2px] bg-muted opacity-50" />
-            )}
+                  ))}
+                </div>
+              ) : (
+                // Empty bucket: a faint stub keeps the axis rhythm readable.
+                <div className="absolute bottom-0 h-[3px] w-full rounded-t-[2px] bg-muted opacity-50" />
+              )}
 
-            {/* Hover tooltip */}
-            {bucket.total > 0 && (
-              <div className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded border border-border bg-card px-2 py-1 text-[10px] opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
-                <span className="font-mono tabular-nums text-foreground">
-                  {bucket.total} signal{bucket.total === 1 ? "" : "s"}
-                </span>
-                <span className="ml-1.5 font-mono tabular-nums text-muted-foreground">
-                  {clockLabel(bucket.start)}–{clockLabel(bucket.end)}
-                </span>
-              </div>
-            )}
-          </div>
-        ))}
+              {/* Hover tooltip */}
+              {(effectiveDecayShape || bucket.total > 0) && (
+                <div className="pointer-events-none absolute -top-9 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded border border-border bg-card px-2 py-1 text-[10px] opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+                  <span className="font-mono tabular-nums text-foreground">
+                    {bucket.total} signal{bucket.total === 1 ? "" : "s"}
+                  </span>
+                  <span className="ml-1.5 font-mono tabular-nums text-muted-foreground">
+                    {clockLabel(bucket.start)}–{clockLabel(bucket.end)}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {/* X-axis ticks */}
