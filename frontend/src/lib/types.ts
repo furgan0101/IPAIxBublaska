@@ -87,6 +87,42 @@ export interface HealthInfo {
   data_mode?: "mock" | "live";
 }
 
+// --- Live situational status tiles (header) — mirror backend/schemas.py ---
+
+/** Current DWD weather-warning summary for a location (via Bright Sky). */
+export interface DwdStatus {
+  active: boolean;
+  level: number;
+  headline?: string | null;
+  description?: string | null;
+  timestamp?: string | null;
+  url: string;
+  temperature?: number | null;
+}
+
+/** Nearest water-level (Pegel) station reading (PEGELONLINE). */
+export interface PegelStatus {
+  active: boolean;
+  station?: string | null;
+  water?: string | null;
+  value?: number | null;
+  unit?: string | null;
+  timestamp?: string | null;
+  state?: string | null;
+  url: string;
+}
+
+/** Traffic / roadworks warnings near a location (MobiData BW). */
+export interface MobiDataStatus {
+  active: boolean;
+  count: number;
+  road?: string | null;
+  location?: string | null;
+  description?: string | null;
+  distance_km?: number | null;
+  url: string;
+}
+
 /** FastAPI backend base URL (override via NEXT_PUBLIC_API_URL). */
 export const API_BASE: string =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Crosshair, LogOut, ShieldAlert } from "lucide-react";
 
-import type { RiskLevel } from "@/lib/mockReports";
+import type { RiskLevel } from "@/lib/reportTypes";
 import { safeNewDate } from "@/lib/format";
 
 const RISK_CHIP: Record<RiskLevel, string> = {

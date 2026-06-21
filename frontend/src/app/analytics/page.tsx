@@ -4,10 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BarChart3 } from "lucide-react";
 
 import {
-  MOCK_REPORTS,
   STATUS_META,
   type CrisisReport,
-} from "@/lib/mockReports";
+} from "@/lib/reportTypes";
 import { adaptAll } from "@/lib/liveAdapter";
 import { useDashboard } from "@/hooks/useDashboard";
 import BwFlag from "@/components/crisislens/BwFlag";
@@ -19,7 +18,7 @@ const THEME_KEY = "crisislens-theme";
 
 export default function AnalyticsPage() {
   const [theme, setTheme] = useState<Theme>("dark");
-  const { incidents, debunked, health, online } = useDashboard();
+  const { incidents, debunked, online } = useDashboard();
 
   useEffect(() => {
     let saved: Theme | null = null;
@@ -46,18 +45,11 @@ export default function AnalyticsPage() {
     });
   }, []);
 
-  const mode = !online
-    ? "offline"
-    : health?.data_mode === "live"
-      ? "live"
-      : "mock";
+  const mode = online ? "live" : "offline";
 
   const reports: CrisisReport[] = useMemo(
-    () =>
-      mode === "live"
-        ? adaptAll(incidents ?? [], debunked ?? [])
-        : MOCK_REPORTS,
-    [mode, incidents, debunked],
+    () => (online ? adaptAll(incidents ?? [], debunked ?? []) : []),
+    [online, incidents, debunked],
   );
 
   // Per-status breakdown for the summary cards.

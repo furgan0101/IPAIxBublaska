@@ -16,7 +16,7 @@ import { Lock } from "lucide-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import "leaflet/dist/leaflet.css";
 
-import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
+import { STATUS_META, type CrisisReport } from "@/lib/reportTypes";
 import {
   MEASURE_KINDS,
   MEASURE_STATUS_META,

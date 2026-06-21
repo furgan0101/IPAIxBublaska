@@ -7,6 +7,7 @@ exactly the job of the credibility filter downstream.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import quote
 
@@ -20,6 +21,39 @@ _LIMIT_PER_TAG: int = 20
 _MIN_TEXT_LEN: int = 15
 _MAX_TEXT_LEN: int = 600
 _ACCEPTED_LANGUAGES: tuple[str | None, ...] = (None, "de", "en")
+
+#: Hashtags that name a topic/agency, not a geocodable place — skipped when
+#: deriving a post's location (national mode). Place tags (#Stuttgart, #Aurich)
+#: are deliberately NOT listed, so they survive as geocoding candidates.
+_NON_PLACE_TAGS: frozenset[str] = frozenset(
+    {
+        "hochwasser", "unwetter", "unwetterwarnung", "gewitter", "sturm",
+        "starkregen", "hitze", "hitzewelle", "waldbrand", "brand", "feuer",
+        "feuerwehr", "feuerwehreinsatz", "polizei", "polizeimeldung",
+        "rettungsdienst", "thw", "katastrophe", "katastrophenschutz", "warnung",
+        "unfall", "verkehrsunfall", "stau", "sperrung", "vollsperrung",
+        "evakuierung", "blaulicht", "einsatz", "bodensee", "bw",
+        "badenwürttemberg", "badenwuerttemberg", "deutschland", "germany",
+        "news", "eilmeldung", "breaking", "wetter", "dwd", "nina",
+    }
+)
+
+#: Feuerwehr / Polizei accounts are commonly @feuerwehr_<ort> — a place fallback.
+_HANDLE_PLACE_RE: re.Pattern[str] = re.compile(
+    r"(?:feuerwehr|ffw|fw|polizei)[_\-.]+([a-zäöüß]{3,})"
+)
+
+
+def _place_hint(status: dict[str, Any], author: str) -> str | None:
+    """Best-effort location string for a post (national mode): the first
+    place-like hashtag, else the town in a Feuerwehr/Polizei handle. The
+    geocoder resolves it (gazetteer -> Nominatim) downstream."""
+    for tag in status.get("tags") or []:
+        name = str(tag.get("name") or "").strip()
+        if len(name) >= 3 and name.isalpha() and name.lower() not in _NON_PLACE_TAGS:
+            return name
+    match = _HANDLE_PLACE_RE.search(author.lower())
+    return match.group(1) if match else None
 
 
 class MastodonConnector:
@@ -59,6 +93,7 @@ def _to_item(status: dict[str, Any]) -> FetchedItem | None:
     if len(text) < _MIN_TEXT_LEN:
         return None
     account = status.get("account") or {}
+    author = f"@{account.get('acct', 'unknown')}"
     media = _extract_media(status)
     media_url = next((m.url for m in media if m.type == "image"), None) or next(
         (m.preview_url for m in media if m.preview_url), None
@@ -66,11 +101,12 @@ def _to_item(status: dict[str, Any]) -> FetchedItem | None:
     return FetchedItem(
         source="mastodon",
         source_id=source_id,
-        author=f"@{account.get('acct', 'unknown')}",
+        author=author,
         text=text[:_MAX_TEXT_LEN],
         timestamp=parse_utc(str(created_at)),
         url=status.get("url") or None,
         media_url=media_url,
+        place_hint=_place_hint(status, author),
         media=media,
     )
 

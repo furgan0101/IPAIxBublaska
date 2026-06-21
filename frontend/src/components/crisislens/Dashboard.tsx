@@ -4,8 +4,6 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  BarChart3,
-  FileText,
   PanelLeftClose,
   PanelLeftOpen,
   RotateCcw,
@@ -13,11 +11,10 @@ import {
 } from "lucide-react";
 
 import {
-  MOCK_REPORTS,
   STATUS_META,
   type CrisisReport,
   type RiskLevel,
-} from "@/lib/mockReports";
+} from "@/lib/reportTypes";
 import { API_BASE } from "@/lib/types";
 import { adaptAll } from "@/lib/liveAdapter";
 import { firstSignalAt } from "@/lib/mediaResponse";
@@ -32,6 +29,9 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { safeNewDate, timeAgo } from "@/lib/format";
 import type { MapFocus } from "./CrisisMap";
 import BwFlag from "./BwFlag";
+import DwdStatusTile from "./DwdStatusTile";
+import PegelStatusTile from "./PegelStatusTile";
+import MobiDataStatusTile from "./MobiDataStatusTile";
 import ThemeToggle from "./ThemeToggle";
 import DetailPanel from "./DetailPanel";
 import ToastStack, { type DashboardToast } from "./ToastStack";
@@ -54,7 +54,7 @@ const CrisisMap = dynamic(() => import("./CrisisMap"), {
   ),
 });
 
-type DataMode = "live" | "mock" | "offline";
+type DataMode = "live" | "offline";
 
 const MODE_META: Record<
   DataMode,
@@ -66,14 +66,8 @@ const MODE_META: Record<
     dot: "bg-emerald-500",
     ping: true,
   },
-  mock: {
-    label: "Mock Data",
-    chip: "border-gold/40 bg-gold-fill/10 text-gold",
-    dot: "bg-gold-fill",
-    ping: false,
-  },
   offline: {
-    label: "Offline Demo",
+    label: "Backend Offline",
     chip: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
     dot: "bg-red-500",
     ping: false,
@@ -83,6 +77,29 @@ const MODE_META: Record<
 interface DashboardProps {
   theme: "dark" | "light";
   onToggleTheme: () => void;
+}
+
+/** When a place is searched, scope the dashboard to incidents within this many
+ *  km of it (geographic, not text, so a city's news shows even when the post
+ *  text doesn't literally name the city). Covers the metro region, not the
+ *  neighbouring cities — searching Stuttgart should not surface Konstanz. */
+const SEARCH_RADIUS_KM = 60;
+
+/** Great-circle distance between two lat/lon points, in kilometres. */
+function haversineKm(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
 
 /** Main command-center view: map, stats, signal feed and report dossier. */
@@ -97,23 +114,17 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
   const [feedOpen, setFeedOpen] = useState(true);
   const latestRequestQuery = useRef<string>("");
 
-  // Live backend data (FastAPI :8000) — polls every 5 s.
-  const { incidents, debunked, health, online, refresh } = useDashboard();
+  // Live backend data (FastAPI :8000) — polls every 5 s. This is the only
+  // source: real OSINT feeds through the credibility + clustering pipeline.
+  const { incidents, debunked, online, refresh } = useDashboard();
 
-  const mode: DataMode = !online
-    ? "offline"
-    : health?.data_mode === "live"
-      ? "live"
-      : "mock";
+  const mode: DataMode = online ? "live" : "offline";
 
-  // Real pipeline output whenever the backend is reachable (in mock mode it
-  // serves the synthetic Konstanz feed) — dispatch/SOP/classified state lives
-  // on the backend, so the Leitstelle workflow needs the real pipeline. The
-  // bundled dataset only covers a fully offline demo (offline judging!).
+  // Real pipeline output only — no synthetic fallback. When the backend is
+  // unreachable or the feeds are quiet, the dashboard is legitimately empty.
   const allReports: CrisisReport[] = useMemo(() => {
-    if (!online) return MOCK_REPORTS;
-    const adapted = adaptAll(incidents ?? [], debunked ?? []);
-    return adapted.length > 0 ? adapted : MOCK_REPORTS;
+    if (!online) return [];
+    return adaptAll(incidents ?? [], debunked ?? []);
   }, [online, incidents, debunked]);
 
   // ------------------------------------------------ dispatch + toasts
@@ -162,33 +173,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     return () => window.removeEventListener("afterprint", reset);
   }, []);
 
-  const dispatchIncident = useCallback(
-    async (report: CrisisReport): Promise<boolean> => {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/incidents/${encodeURIComponent(report.id)}/dispatch`,
-          { method: "POST" },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        pushToast(
-          "success",
-          "Dispatched to Leitstelle",
-          `${report.crisisType} · ${report.id} handed to the control centre; SOP checklist confirmed.`,
-        );
-        void refresh();
-        return true;
-      } catch {
-        pushToast(
-          "error",
-          "Dispatch failed",
-          "Backend unreachable — the incident was NOT handed off.",
-        );
-        return false;
-      }
-    },
-    [pushToast, refresh],
-  );
-
   const reports = useMemo(
     () => {
       let filtered = allReports;
@@ -201,7 +185,18 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         const threshold = (minConfidence - 1) * 25;
         filtered = filtered.filter((r) => r.confidence >= threshold);
       }
-      if (searchQuery.trim()) {
+      if (manualFocus) {
+        // A place was searched + geocoded: scope to incidents near it, so the
+        // feed shows that city's news regardless of whether the post text
+        // happens to name the city.
+        const [clat, clon] = manualFocus.center;
+        filtered = filtered.filter(
+          (r) =>
+            haversineKm(clat, clon, r.coordinates[0], r.coordinates[1]) <=
+            SEARCH_RADIUS_KM,
+        );
+      } else if (searchQuery.trim()) {
+        // Free-text typing before a place is geocoded: keyword match.
         const q = searchQuery.toLowerCase();
         filtered = filtered.filter(
           (r) =>
@@ -213,7 +208,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
       }
       return filtered;
     },
-    [allReports, activeTag, minConfidence, searchQuery],
+    [allReports, activeTag, minConfidence, searchQuery, manualFocus],
   );
 
   const tagCounts = useMemo(() => {
@@ -284,6 +279,14 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
     () => (focusCity ? firstSignalAt(scopedReports) : null),
     [focusCity, scopedReports],
   );
+
+  // Live status tiles track the focused location: a searched/geocoded place
+  // (manualFocus) or the Command-Mode city, defaulting to the Konstanz sector.
+  const KONSTANZ_CENTER: [number, number] = [47.6603, 9.1758];
+  const tileCenter = cityFocus?.center ?? KONSTANZ_CENTER;
+  const tileLocationName =
+    focusCity ??
+    (manualFocus && searchQuery.trim() ? searchQuery.trim() : "Konstanz");
 
   const highestRisk = useMemo<RiskLevel | null>(() => {
     if (scopedReports.length === 0) return null;
@@ -423,6 +426,22 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          <DwdStatusTile
+            locationName={tileLocationName}
+            lat={tileCenter[0]}
+            lon={tileCenter[1]}
+          />
+          <PegelStatusTile
+            locationName={tileLocationName}
+            lat={tileCenter[0]}
+            lon={tileCenter[1]}
+          />
+          <MobiDataStatusTile
+            locationName={tileLocationName}
+            lat={tileCenter[0]}
+            lon={tileCenter[1]}
+          />
+
           {selected && (
             <button
               type="button"
@@ -433,24 +452,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
               Reset View
             </button>
           )}
-
-          <button
-            type="button"
-            onClick={() => requestPrint(null)}
-            title="Export the current sector picture as a printable Lagebericht (PDF)"
-            className="hidden items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-muted md:flex"
-          >
-            <FileText className="h-3.5 w-3.5" />
-            <span className="hidden lg:inline">Export Lagebericht (PDF)</span>
-          </button>
-
-          <a
-            href="/analytics"
-            className="hidden items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground md:flex"
-            title="Signal analytics"
-          >
-            <BarChart3 className="h-3.5 w-3.5" />
-          </a>
 
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
         </div>
@@ -643,7 +644,7 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
                       latestRequestQuery.current = queryToFetch;
                       try {
                         const res = await fetch(
-                          `http://localhost:8000/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
+                          `${API_BASE}/api/geocode?q=${encodeURIComponent(queryToFetch)}`,
                         );
                         const data = await res.json();
                         if (latestRequestQuery.current === queryToFetch && data.lat && data.lon) {
@@ -710,7 +711,6 @@ export default function Dashboard({ theme, onToggleTheme }: DashboardProps) {
         <DetailPanel
           report={selected}
           onClose={() => setSelectedId(null)}
-          onDispatch={dispatchIncident}
           onExportPdf={requestPrint}
         />
       </div>

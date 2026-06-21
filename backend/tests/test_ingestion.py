@@ -54,6 +54,7 @@ def make_settings(tmp_path: Path, **overrides: Any) -> IngestionSettings:
         "mastodon_instance": "https://mastodon.example",
         "mastodon_tags": ("konstanz",),
         "nominatim_enabled": False,
+        "national": False,
         "request_timeout_s": 5.0,
         "user_agent": "VOSTbw-tests",
     }
@@ -90,17 +91,6 @@ def test_classifier_maps_german_crisis_text(text: str, expected: str) -> None:
 def test_classifier_drops_non_crisis_chatter() -> None:
     assert classify("Stadtfest am Wochenende in Konstanz mit Livemusik") is None
     assert classify("Neue Fahrradständer am Bahnhof eingeweiht") is None
-
-
-def test_classifier_matches_every_credible_mock_report() -> None:
-    """The keyword classifier must agree with the curated mock feed."""
-    from logic.verification import filter_reports
-    from main import load_raw_reports
-
-    credible, _ = filter_reports(load_raw_reports())
-    assert credible  # sanity: the mock feed has credible reports
-    for report in credible:
-        assert classify(report.text) is not None, report.id
 
 
 # --- gazetteer + place hints ----------------------------------------------------------

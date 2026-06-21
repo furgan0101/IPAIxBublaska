@@ -11,7 +11,7 @@ import type {
   EvidenceLink,
   RiskLevel,
   SourceType,
-} from "@/lib/mockReports";
+} from "@/lib/reportTypes";
 import type {
   DebunkedReport,
   SourceReport,
@@ -35,8 +35,10 @@ const RISK_BY_SEVERITY: Record<string, RiskLevel> = {
   low: "Low",
 };
 
-/** Coarse nearest-city label so Command Mode can scope statewide BW data. */
-const BW_CITIES: ReadonlyArray<{ name: string; lat: number; lon: number }> = [
+/** Coarse nearest-city label. Covers BW (Command Mode) plus the major German
+ *  cities, so nationwide ingestion (Lever A) labels incidents sensibly. */
+const CITY_LABELS: ReadonlyArray<{ name: string; lat: number; lon: number }> = [
+  // Baden-Württemberg
   { name: "Konstanz", lat: 47.6603, lon: 9.1758 },
   { name: "Stuttgart", lat: 48.7758, lon: 9.1829 },
   { name: "Karlsruhe", lat: 49.0069, lon: 8.4037 },
@@ -45,12 +47,34 @@ const BW_CITIES: ReadonlyArray<{ name: string; lat: number; lon: number }> = [
   { name: "Ulm", lat: 48.4011, lon: 9.9876 },
   { name: "Heidelberg", lat: 49.3988, lon: 8.6724 },
   { name: "Heilbronn", lat: 49.1427, lon: 9.2109 },
+  { name: "Tübingen", lat: 48.5216, lon: 9.0576 },
+  { name: "Reutlingen", lat: 48.4914, lon: 9.2043 },
+  { name: "Pforzheim", lat: 48.8922, lon: 8.6946 },
+  { name: "Offenburg", lat: 48.4738, lon: 7.945 },
+  { name: "Ravensburg", lat: 47.7818, lon: 9.6107 },
+  // Major German cities (national)
+  { name: "Berlin", lat: 52.52, lon: 13.405 },
+  { name: "Hamburg", lat: 53.5511, lon: 9.9937 },
+  { name: "München", lat: 48.1351, lon: 11.582 },
+  { name: "Köln", lat: 50.9375, lon: 6.9603 },
+  { name: "Frankfurt", lat: 50.1109, lon: 8.6821 },
+  { name: "Düsseldorf", lat: 51.2277, lon: 6.7735 },
+  { name: "Dortmund", lat: 51.5136, lon: 7.4653 },
+  { name: "Essen", lat: 51.4556, lon: 7.0116 },
+  { name: "Bremen", lat: 53.0793, lon: 8.8017 },
+  { name: "Hannover", lat: 52.3759, lon: 9.732 },
+  { name: "Nürnberg", lat: 49.4521, lon: 11.0767 },
+  { name: "Leipzig", lat: 51.3397, lon: 12.3731 },
+  { name: "Dresden", lat: 51.0504, lon: 13.7373 },
+  { name: "Aurich", lat: 53.4717, lon: 7.4836 },
+  { name: "Kiel", lat: 54.3233, lon: 10.1228 },
+  { name: "Münster", lat: 51.9607, lon: 7.6261 },
 ];
 
 function nearestCity(lat: number, lon: number): string {
-  let best = BW_CITIES[0];
+  let best = CITY_LABELS[0];
   let bestD = Number.POSITIVE_INFINITY;
-  for (const c of BW_CITIES) {
+  for (const c of CITY_LABELS) {
     const d = (c.lat - lat) ** 2 + (c.lon - lon) ** 2;
     if (d < bestD) {
       bestD = d;

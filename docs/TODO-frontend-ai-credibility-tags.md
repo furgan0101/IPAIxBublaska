@@ -29,8 +29,8 @@ Backend source of truth: `backend/schemas.py`, aggregation in
    - `SourceReport`: `ai_credibility?: number | null;`
    - `VerifiedIncident`: `ai_credibility?: number | null;`
 
-2. **`frontend/src/lib/mockReports.ts`** — add `aiCredibility?: number | null;` to the
-   `CrisisReport` interface. (Optionally seed a few mock reports with a value so the mock demo shows it.)
+2. **`frontend/src/lib/reportTypes.ts`** — add `aiCredibility?: number | null;` to the
+   `CrisisReport` interface, and map it from the backend value in `liveAdapter.ts`.
 
 3. **`frontend/src/lib/liveAdapter.ts`**
    - `adaptIncident`: set

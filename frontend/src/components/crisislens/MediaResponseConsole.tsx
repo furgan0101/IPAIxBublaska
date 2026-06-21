@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 
-import type { CrisisReport } from "@/lib/mockReports";
+import type { CrisisReport } from "@/lib/reportTypes";
 import {
   CHANNEL_META,
   STAGE_LABELS,

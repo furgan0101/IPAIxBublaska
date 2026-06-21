@@ -19,6 +19,7 @@ import asyncio
 import hashlib
 import logging
 import re
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Sequence
@@ -64,6 +65,22 @@ OFFICIAL_CONFIDENCE_FLOOR: dict[str, float] = {
 
 DEBUNKED_LIMIT: int = 60
 FUTURE_SKEW_TOLERANCE: timedelta = timedelta(minutes=10)
+
+#: Rolling window of recently-received items + their disposition, for the
+#: /api/ingestion/inbox observability endpoint ("what came in, why it isn't
+#: on the map"). In-memory only; cleared on restart.
+INBOX_LIMIT: int = 400
+
+#: Human-readable reason per disposition (debunked overrides with its rule).
+DISPOSITION_REASON: dict[str, str] = {
+    "verified": "Verified — shown on the map",
+    "debunked": "Failed credibility check — shown in Disinfo Caught",
+    "duplicate": "Duplicate content (already ingested)",
+    "stale": "Older than the retention window",
+    "not_crisis": "No crisis event-type matched (off-topic)",
+    "unlocated": "Could not geolocate inside the sector",
+    "off_sector": "Outside the sector radius",
+}
 
 # "(Ort, Straße / Lkr. X)" location prefix — police style, also mirrored by
 # news bots on social media. Used when a connector supplied no place hint.
@@ -121,6 +138,7 @@ class IngestionService:
         self._poll_lock = asyncio.Lock()
         self._last_poll_utc: str | None = None
         self._last_stats: dict[str, int] = {}
+        self._inbox: deque[dict[str, Any]] = deque(maxlen=INBOX_LIMIT)
 
     # -- lifecycle ----------------------------------------------------------------
 
@@ -179,15 +197,19 @@ class IngestionService:
             for item in fetched:
                 key = f"{item.source}:{item.source_id}"
                 if key in known_keys:
+                    # Re-fetch of an item seen in a previous cycle; it was
+                    # already recorded in the inbox when first encountered.
                     stats["duplicates"] += 1
                     continue
                 report, drop_reason = await self._normalise(item, key, now)
                 if report is None:
                     stats[drop_reason] += 1
+                    self._record_inbox(item, drop_reason, None, now)
                     continue
                 chash = content_hash(report.text)
                 if chash in known_hashes:
                     stats["duplicates"] += 1
+                    self._record_inbox(item, "duplicate", report, now)
                     continue
                 known_keys.add(key)
                 known_hashes.add(chash)
@@ -199,8 +221,10 @@ class IngestionService:
                 report = annotate_report(report, assessment)
                 if assessment.credible:
                     stats["new_verified"] += 1
+                    self._record_inbox(item, "verified", report, now)
                 else:
                     stats["new_debunked"] += 1
+                    self._record_inbox(item, "debunked", report, now, assessment.reason)
                 await asyncio.to_thread(
                     self._store.add_report,
                     key,
@@ -260,7 +284,10 @@ class IngestionService:
                 hint_match = _PAREN_HINT_RE.search(item.text[:160])
                 place_hint = hint_match.group(1) if hint_match else None
             coords = await self._geocoder.resolve(
-                self.client(), place_hint, item.text
+                self.client(),
+                place_hint,
+                item.text,
+                bounded=not self._settings.national,
             )
             if coords is None and item.source == "nina":
                 # District-wide official warning without geometry: it applies
@@ -270,7 +297,9 @@ class IngestionService:
                 return None, "unlocated"
             lat, lon = coords
 
-        if had_explicit_coords:
+        # National mode keeps everything geocodable; the sector gate only
+        # applies to the Konstanz-scoped default.
+        if had_explicit_coords and not self._settings.national:
             distance_km = geodesic(
                 (lat, lon), (self._settings.sector_lat, self._settings.sector_lon)
             ).kilometers
@@ -392,6 +421,60 @@ class IngestionService:
             "connectors": [
                 health.as_dict() for health in self._health.values()
             ],
+        }
+
+    # -- observability (inbox) --------------------------------------------------------
+
+    def _record_inbox(
+        self,
+        item: FetchedItem,
+        disposition: str,
+        report: RawReport | None,
+        now: datetime,
+        reason: str | None = None,
+    ) -> None:
+        """Log one received item + how the pipeline disposed of it, for the
+        inbox endpoint. `report` is set once normalisation succeeded (so we
+        have the resolved event type + coordinates)."""
+        if report is not None:
+            event_type: str | None = report.event_type
+            lat, lon = report.lat, report.lon
+        else:
+            event_type = item.event_type or classify(item.text)
+            lat = lon = None
+        self._inbox.appendleft(
+            {
+                "source": item.source,
+                "author": item.author[:80],
+                "text": item.text[:240],
+                "event_type": event_type,
+                "disposition": disposition,
+                "reason": reason or DISPOSITION_REASON.get(disposition, disposition),
+                "place_hint": item.place_hint,
+                "lat": lat,
+                "lon": lon,
+                "timestamp": item.timestamp.astimezone(timezone.utc).isoformat(),
+                "url": item.url,
+                "recorded_at": now.isoformat(),
+            }
+        )
+
+    def inbox(
+        self, disposition: str | None = None, limit: int = 200
+    ) -> dict[str, Any]:
+        """Recently-received items (newest first) + a per-disposition summary.
+        `disposition` filters to one bucket (e.g. 'unlocated', 'not_crisis')."""
+        summary: dict[str, int] = {}
+        for entry in self._inbox:
+            disp = entry["disposition"]
+            summary[disp] = summary.get(disp, 0) + 1
+        entries = list(self._inbox)
+        if disposition:
+            entries = [e for e in entries if e["disposition"] == disposition]
+        return {
+            "total": len(self._inbox),
+            "summary": summary,
+            "entries": entries[: max(0, limit)],
         }
 
 

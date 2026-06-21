@@ -1,6 +1,7 @@
 /**
- * Resolve a working external link for synthetic / mock reports.
- * Maps sources and titles to their real, official source websites.
+ * Resolve a working external link for a report when the source post/release
+ * has no usable URL. Maps sources and titles to their real, official websites
+ * (DWD, NINA/warnung.bund.de, Presseportal, local press, social profiles).
  */
 export function getWorkingUrl(
   href: string | null | undefined,

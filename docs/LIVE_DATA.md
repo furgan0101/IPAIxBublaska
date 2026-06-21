@@ -94,9 +94,10 @@ post is assessed exactly once, so polling does not re-burn credits).
 
 The funnel is honest: a quiet news day in a 40 km sector may yield only a
 handful of verified incidents (e.g. one police accident release) and many
-drops — that's the product working, not failing. For a denser demo: raise
-`FEEDS_RETENTION_HOURS` / `SECTOR_RADIUS_KM`, add tags/feeds, or layer demo
-injections (`DemoControls`) on top of the live picture.
+drops — that's the product working, not failing. There is no synthetic
+fallback, so a calm day genuinely shows few or no incidents. For a denser
+demo: raise `FEEDS_RETENTION_HOURS` / `SECTOR_RADIUS_KM`, add tags/feeds, or
+inject a real report via `POST /api/reports`.
 
 ## Compliance notes
 

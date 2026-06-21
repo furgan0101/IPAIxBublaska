@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { safeNewDate } from "@/lib/format";
-import type { CrisisReport } from "@/lib/mockReports";
+import type { CrisisReport } from "@/lib/reportTypes";
 
 interface ReportTimelineProps {
   reports: CrisisReport[];

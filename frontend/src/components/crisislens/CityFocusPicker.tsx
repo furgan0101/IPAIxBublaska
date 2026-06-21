@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, Crosshair } from "lucide-react";
 
-import { STATUS_META, type CrisisReport, type ReportStatus } from "@/lib/mockReports";
+import { STATUS_META, type CrisisReport, type ReportStatus } from "@/lib/reportTypes";
 
 /** relevant > review > ignored — for the per-city worst-status dot. */
 const STATUS_RANK: Record<ReportStatus, number> = {

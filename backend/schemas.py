@@ -201,3 +201,45 @@ class SubmissionResult(BaseModel):
     incident_id: str | None = None
     confidence_score: float | None = None
     reason_flagged: str | None = None
+
+
+# --- Live situational status tiles (header) ---------------------------------
+# Real-time context for the focused location, sourced from official open APIs:
+# DWD warnings (via Bright Sky), PEGELONLINE water levels, MobiData BW traffic.
+
+
+class DwdStatus(BaseModel):
+    """Current DWD weather-warning summary for a location (via Bright Sky)."""
+
+    active: bool
+    level: int = 0
+    headline: str | None = None
+    description: str | None = None
+    timestamp: datetime | None = None
+    url: str = "https://www.dwd.de/DE/wetter/warnungen_gemeinden/warnWetter_node.html"
+    temperature: float | None = None
+
+
+class PegelStatus(BaseModel):
+    """Nearest water-level (Pegel) station and its current reading (PEGELONLINE)."""
+
+    active: bool
+    station: str | None = None
+    water: str | None = None
+    value: float | None = None
+    unit: str | None = "cm"
+    timestamp: datetime | None = None
+    state: str | None = None
+    url: str = "https://www.hvz.baden-wuerttemberg.de"
+
+
+class MobiDataStatus(BaseModel):
+    """Traffic / roadworks warnings near a location (MobiData BW open data)."""
+
+    active: bool
+    count: int = 0
+    road: str | None = None
+    location: str | None = None
+    description: str | None = None
+    distance_km: float | None = None
+    url: str = "https://www.verkehrsinfo-bw.de"

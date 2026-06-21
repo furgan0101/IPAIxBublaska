@@ -1,147 +1,96 @@
 # VOSTbw — Automated OSINT Situational Awareness Dashboard
 
-Hackathon MVP for **VOST Baden-Württemberg**: ingests raw OSINT posts (tweets, Telegram, Mastodon), runs them through an AI credibility filter and a geospatial verification engine, then plots **verified incidents** on a live Konstanz map — and proudly shows the **disinformation it caught**, with the reason each report was flagged.
+> **Hackathon project** — built at the **IPAI × Public Makers × Komm.one** hackathon, **June 2026**.
+> For **VOST Baden-Württemberg** (Virtual Operations Support Team).
 
-![VOSTbw OSINT dashboard](docs/dashboard.png)
+Ingests **live open-source crisis reports**, runs them through an **AI credibility filter** and a **geospatial verification engine**, and plots **verified incidents** on a live map — while exposing the **disinformation it caught** and the real-time environmental status (weather, water levels, traffic) for any location you search.
 
-## Dashboard highlights
+Demo sector centre: **Konstanz** (47.6603 N, 9.1758 E). All data is real OSINT — when the feeds are quiet, the map is legitimately empty.
 
-- **SITREP strip** — live KPIs (active incidents, corroborating sources, disinfo caught, average confidence) with count-up animation, plus an event-type breakdown.
-- **Map ↔ list cross-highlighting** — hover either side and the other reacts; click a pin or card to open the **incident dossier** (the map flies to it).
-- **Incident dossier** — radial confidence gauge, severity badge, per-incident **source timeline**, and a prominent **RECOMMENDED ACTION** hint (the challenge's "action hints", derived from event type × corroboration × confidence).
-- **Event-type filter chips** — filter the map and both lists together.
-- **Live injection reactions** — toasts announce each verdict, verified reports fly-and-pulse on the map, hoaxes flash an amber **DEBUNKED** pin at their claimed location before landing in the caught-panel (which auto-opens).
-- **Flag-rule badges** — every caught item shows *which* check fired: `TEMPORAL` (stale EXIF), `SPATIAL` (geotag conflict), `LINGUISTIC` (bot-spam), `OUTPUT GUARD` (AI parsing).
-- Skeleton loading states, an intentional API-offline banner, keyboard/ARIA support, and full `prefers-reduced-motion` compliance.
+---
 
+## Run it
+
+Requirements: **Python 3.10+**, **Node.js 18.18+**.
+
+```bash
+# 1. from the repo root
+npm install            # installs the root dev-server runner
+npm run setup          # installs backend (pip) + frontend (npm) dependencies
+
+# 2. configure the backend
+cp backend/.env.example backend/.env
+#    then set LITELLM_API_KEY=<your key> in backend/.env
+#    (or set USE_LIVE_AI=false to run the heuristic-only filter — no API key, no credits)
+
+# 3. start both servers (API + web)
+npm run dev
 ```
-mock_data.json ──> ingestion ──> AI credibility filter ──> geo-clustering ──> FastAPI ──> Next.js map
- (8 raw posts)     RawReport      bot-spam / stale EXIF      1.0 km radius     :8000        :3000
-                                  / geotag conflicts         60 min window
-```
-
-## Requirements
-
-- Python **3.10+**
-- Node.js **18.18+**
-
-## Quick start (one line per step, from the repo root)
-
-| # | Command | What it does |
-|---|---------|--------------|
-| 1 | `npm install` | installs the root dev-server runner (`concurrently`) |
-| 2 | `npm run setup` | installs backend (pip) **and** frontend (npm) dependencies |
-| 3 | `npm run dev` | starts **both** servers concurrently — API on :8000, dashboard on :3000 |
 
 Then open **http://localhost:3000**.
 
-### Individual servers (fallback)
+Run the backend test suite (fully offline — no network, no AI credits):
 
-```
-cd backend && python -m uvicorn main:app --reload --port 8000
-```
-
-```
-cd frontend && npm run dev
-```
-
-### Backend tests
-
-```
+```bash
 npm run test:api
 ```
 
-### Force a fresh AI run (clear the live-feed cache)
+### Key configuration (`backend/.env`)
 
-In live mode (`FEEDS_ENABLED=true`) every fetched report is deduped against the
-SQLite cache (`backend/data/livefeeds.db`), so already-seen items never hit the
-LLM again. To wipe that cache and re-analyse everything from scratch:
-
-```
-npm run reset:feeds
-```
-
-This calls `POST /api/reset` (re-polls all feeds) when the backend is up, or
-deletes the SQLite cache for a cold start when it is down. With `LLM_VERBOSE=true`
-(default) the server console then prints the full request + raw response for every
-gateway call.
-
-## URLs
-
-| Service | URL |
-|---|---|
-| Dashboard | http://localhost:3000 |
-| API — verified incidents | http://localhost:8000/api/incidents |
-| API — disinformation caught | http://localhost:8000/api/debunked |
-| API — health / AI mode | http://localhost:8000/api/health |
-| Interactive API docs (Swagger) | http://localhost:8000/docs |
-
-Live-demo endpoints (POST): `POST /api/reports` injects one report through the full pipeline; `POST /api/reset` restores the initial mock state. Both are driven by the on-map **DEMO · INJECT LIVE REPORT** panel.
-
-## How verification works (all metric)
-
-A raw report is **debunked** if any rule fires:
-
-| Rule | Threshold | Catches |
+| Variable | Default | Meaning |
 |---|---|---|
-| Bot-spam phrasing | known marker list | amplification networks ("SHARE BEFORE THEY DELETE…") |
-| Recycled footage | media EXIF > **48 h** older than the post | old flood/fire videos re-posted as breaking news |
-| Geotag conflict | media EXIF geotag > **5 km** from claimed position | photos taken in a different city |
+| `FEEDS_ENABLED` | `true` | Live OSINT ingestion |
+| `USE_LIVE_AI` | `true` | Live LLM analyst — set `false` for the deterministic heuristic filter (real logic, **no credits**) |
+| `INGEST_NATIONAL` | `true` | Ingest nationwide so **any searched city** surfaces its news; `false` restricts to the Konstanz sector |
+| `LITELLM_API_KEY` | — | Gateway key for the live analyst |
+| `NOMINATIM_ENABLED` | `true` | Geocoding fallback (keyless, cached, rate-limited per OSM policy) |
 
-Surviving reports are **clustered**: same event type, within a **1.0 km radius** of the cluster centroid, within a **60 min** window of another member → merged into one `VerifiedIncident`. Confidence scales with the number of independent corroborating sources.
+`GET /api/health` reports the active `ai_mode` and `data_mode`.
 
-## Scenario coverage (BW Ministry of the Interior crisis catalogue)
+---
 
-The event taxonomy, severity grading, and responder action hints cover the official potential-crisis scenarios of the Ministry of the Interior of Baden-Württemberg (source of truth: `backend/logic/guidance.py`; the live LLM classifier is constrained to the same classes):
+## What it does (scope)
 
-| Ministry category | Event classes |
-|---|---|
-| Natural hazards | `flood` · `storm` · `wildfire` · `earthquake` · `heatwave` · `cold_spell` |
-| Technological & industrial disasters | `fire` · `explosion` · `chemical_accident` · `hazmat` · `accident` (large-scale transport) · `infrastructure_failure` |
-| CBRN incidents | `nuclear_accident` · `radiological` · `biological` · `chemical_attack` |
-| Public health | `pandemic` |
-| Terrorism & security threats | `terror_attack` · `cbrn_attack` · `hostage` · `sabotage` |
-| Supply & infrastructure crises | `power_outage` · `telecom_failure` · `water_supply` · `food_supply` · `supply_chain` |
-| Civil defence operations | `evacuation` |
+- **Live OSINT ingestion** — polls real, keyless open sources on an interval: **NINA** civil-protection warnings, **Presseportal** police/fire press releases, public **Mastodon** hashtag timelines, and **DWD** weather warnings. No synthetic feed.
+- **AI credibility filter** — every report passes deterministic heuristics first (bot-spam phrasing, recycled-footage EXIF, geotag conflict), then an optional **live LLM analyst** (Qwen3-VL via the LiteLLM gateway) that judges tone, specificity and plausibility — and, with vision enabled, whether attached imagery matches the claim — returning a verdict **with a rationale**.
+- **Geospatial verification** — surviving reports are clustered (same event type, **1 km** radius, **60 min** window) into verified incidents; confidence scales with the number of independent corroborating sources.
+- **Responder guidance** — each incident carries an impact-based **severity**, a recommended **action**, and an agency-tagged **SOP checklist** (Polizei / Feuerwehr / THW / Rettungsdienst / LRA), mirroring the **BW Ministry of the Interior crisis catalogue** (27 event classes: natural hazards, technological/industrial, CBRN, pandemic, terrorism/security, supply crises, evacuations).
+- **Search any German city** — ingestion runs nationwide; searching a city scopes the map, feed and stats to incidents within ~100 km of it.
+- **Live status tiles** — header tiles give real-time context for the focused location from official open APIs: **DWD** weather warnings (via Bright Sky), **PegelOnline** water levels, and **MobiData BW** traffic/roadworks.
+- **Disinfo caught** — a dedicated panel shows each rejected report with the rule that fired (`TEMPORAL` stale EXIF · `SPATIAL` geotag conflict · `LINGUISTIC` bot-spam · `OUTPUT GUARD` AI) and the exact reason.
+- **Ingestion inbox** — `GET /api/ingestion/inbox` exposes every received item and how the pipeline disposed of it (verified / debunked / duplicate / stale / off-topic / unlocated) — full transparency into what came in but isn't on the map, and why.
 
-Each class carries an impact-based severity (`high`/`moderate`/`low`) and a concise recommended responder action; security-sensitive classes (terror, hostage, CBRN) deliberately prescribe **information discipline** rather than operational detail. Preparedness *measures* from the catalogue (e.g. cooperation with federal authorities) are intentionally not incident types. The scenario injector includes a `chemical_accident` preset at the Staad ferry port to demonstrate the catalogue live.
+---
 
-## Live AI mode (optional — LiteLLM gateway)
+## Architecture
 
-Mock mode is the default: **zero external calls**. To enable the live LLM analyst (Qwen3-VL via the govdigital LiteLLM gateway):
-
-1. `cd backend` and copy `.env.example` → `.env`
-2. Set `LITELLM_API_KEY=<your key>` and `USE_LIVE_AI=true` (optionally `USE_VISION=true` for image-plausibility analysis)
-3. Restart the backend — `GET /api/health` now reports `"ai_mode": "live"` (`live-ready` = key present but toggle off)
-
-Behaviour in live mode: the deterministic heuristics (bot-spam / stale-EXIF / geotag drift) still run **first**; reports that pass are then judged by the LLM for tone, specificity and plausibility, returning a verdict **with a 1–2 sentence rationale**, and its extracted `event_type` refines classification before clustering. With `USE_VISION=true` the attached image (or a video's preview frame) is **downloaded and sent as a base64 data URI** — the gateway blocks remote image URLs — and the model adds a `media_consistency` note (does the imagery match the claim?). Multiple keys in `LITELLM_API_KEYS` are rotated on quota errors. Infra failures degrade gracefully back to heuristics; unparseable model output is flagged as `AI Parsing Error`. Model: `stackit-qwen-qwen3-vl-235b-a22b-instruct-fp8`.
-
-**Verified live (2026-06-12):** real Polizeipräsidium-Konstanz releases analyzed with genuine AI rationales, and a fake "flood" claim **debunked by vision** — *"Image shows a serene sunset scene… contradicting the claim."* The CrisisLens dashboard (`/?dashboard` deep-link skips the landing page) renders the live pipeline with a LIVE DATA badge, AI rationales, analyzed-media thumbnails and outbound source links; it falls back to the bundled mock dataset automatically when the API is offline.
-
-![CrisisLens live](docs/crisislens-live.png)
-
-One-call live smoke test (after setting the env vars):
-
-```powershell
-cd backend
-python -c "from main import load_raw_reports; from logic.verification import analyze_with_llm; print(analyze_with_llm(load_raw_reports()[0]))"
+```
+live OSINT feeds ──▶ ingestion ──▶ AI credibility filter ──▶ geo-clustering ──▶ FastAPI ──▶ Next.js map
+ NINA · Presse-       RawReport      heuristics + live LLM      1.0 km radius     (:8000)      (:3000)
+ portal · Mastodon                   bot-spam / EXIF / vision   60 min window
+ · DWD
 ```
 
-## Demo script (for judges)
+- **Backend** — Python / FastAPI (`backend/`): ingestion connectors (`ingestion/`) → credibility filter (`logic/verification.py`) → geo-clustering (`logic/geospatial.py`) → responder guidance (`logic/guidance.py`), served over thin endpoints (`main.py`). SQLite store; in-memory served snapshot. Strictly type-hinted; Pydantic models for everything crossing a boundary.
+- **Frontend** — Next.js / React 19 / Tailwind v4 (`frontend/`): Leaflet map with verification rings, live signal feed, incident dossier, and the live status tiles. A single 5 s poll loop (`hooks/useDashboard.ts`) is the only data source.
 
-1. `npm run dev` → open http://localhost:3000.
-2. **Map**: four incidents across Konstanz — flood at the Seestraße/Hafen waterfront (3 sources), roof fire in the Niederburg (2), storm damage at Herosé-Park/Schänzlebrücke (2), and a single-source power outage in Petershausen — each with its 1 km verification ring. Click a pin to open the dossier with the source timeline and the recommended action.
-3. **Sidebar → Disinfo Caught**: 4 flagged posts, each with the rule that fired and the exact reason — recycled 2019 flood video (stale EXIF), two bot-spam panic posts, and a "Bahnhof fire" photo whose EXIF geotag is 124 km away in Stuttgart.
-4. **Live injection** (the on-map DEMO panel) — push a report through the pipeline in real time:
-   - *Corroborating flood report* → merges into the live flood incident; confidence jumps (86% → 97%) and the source count rises.
-   - *New incident · north sector* → a fresh red pin appears north of the city.
-   - *Recycled-footage hoax* / *Bot-spam hoax* → caught instantly and dropped into "Disinformation Caught" with the reason.
-   - *Reset demo* → restores the starting state to run it again.
-5. `GET /api/health` → shows `"ai_mode": "mock"`; set `LITELLM_API_KEY` + `USE_LIVE_AI=true` in `backend/.env` and it flips to `live` — real LLM analysis with no code changes (see **Live AI mode** above).
+Clean pipeline separation: **ingestion · AI verification · API routing** are independently testable.
+
+### Main endpoints
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/incidents` | Verified, clustered incidents |
+| `GET` | `/api/debunked` | Reports caught by the credibility filter |
+| `GET` | `/api/health` | Liveness, AI mode, per-connector feed status |
+| `GET` | `/api/ingestion/inbox` | What was received + why it was/wasn't displayed |
+| `GET` | `/api/{dwd,pegel,mobidata}/status` | Live status tiles |
+| `POST` | `/api/poll` · `/api/reset` · `/api/reports` | Operator actions (poll now · wipe & re-poll · inject a report) |
+
+---
 
 ## Notes
 
-- **All feed data is synthetic** (`backend/mock_data.json`) — fictional accounts, posts, and media. Timestamps are rebased to "now" at backend startup so the demo always looks live.
-- **No external AI/geocoding calls** are made in mock mode (hackathon guardrail — no rate limits, no burned credits).
-- Map tiles: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors © [CARTO](https://carto.com/attributions) (network access required for tiles).
-- Next step (planned): **Step 6 — Live Wire**, swapping `mock_data.json` for a real Telegram/RSS ingestion source. See `implementation-plan.md`.
+- **All data is real OSINT.** Sources: NINA (`warnung.bund.de`), Presseportal RSS, public Mastodon timelines, DWD (via Bright Sky), PegelOnline (WSV), MobiData BW. Map tiles © [OpenStreetMap](https://www.openstreetmap.org/copyright) / [CARTO](https://carto.com/attributions); geocoding via Nominatim (per OSM usage policy).
+- **Metric system throughout** — kilometres, metres, °C.
+- **Tests run fully offline** (`npm run test:api`): connectors replay recorded fixtures and the LLM client is monkeypatched — zero network calls, no burned credits.

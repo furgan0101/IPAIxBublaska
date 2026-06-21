@@ -3,7 +3,6 @@
 import { ArrowRight, ScanSearch, UserCheck, RadioTower } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Feature108 } from "@/components/ui/feature108";
 import BwFlag from "./BwFlag";
 import ThemeToggle from "./ThemeToggle";
 
@@ -14,51 +13,27 @@ interface LandingProps {
   onToggleTheme: () => void;
 }
 
-const PIPELINE_TABS = [
+const STAGES = [
   {
-    value: "ingest",
-    icon: <RadioTower className="h-auto w-4 shrink-0" />,
-    label: "Signal ingestion",
-    content: {
-      badge: "Stage 01 · Ingest",
-      title: "Open sources, one picture.",
-      description:
-        "CrisisLens collects public crisis signals — social posts, local news, weather alerts and citizen reports — and normalises them into a single time-stamped feed.",
-      buttonText: "Begin Analysis",
-      imageSrc:
-        "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=1200&q=80",
-      imageAlt: "Earth at night seen from orbit, city lights visible",
-    },
+    icon: <RadioTower className="h-5 w-5" />,
+    badge: "Stage 01 · Ingest",
+    title: "Open sources, one picture.",
+    description:
+      "Polls real open sources (official civil-protection and weather warnings from NINA and DWD, police & fire press releases, and public social posts) and normalises them into a single time-stamped feed.",
   },
   {
-    value: "triage",
-    icon: <ScanSearch className="h-auto w-4 shrink-0" />,
-    label: "Triage analysis",
-    content: {
-      badge: "Stage 02 · Triage",
-      title: "Plausibility, not proclamation.",
-      description:
-        "Every report receives a plausibility estimate built from source reliability, location match, media support and cross-source confirmation. Weak signals are ignored due to insufficient corroboration — never silently deleted.",
-      buttonText: "Open the dashboard",
-      imageSrc:
-        "https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&w=1200&q=80",
-      imageAlt: "Topographic map with navigation instruments",
-    },
+    icon: <ScanSearch className="h-5 w-5" />,
+    badge: "Stage 02 · Triage",
+    title: "Plausibility, not proclamation.",
+    description:
+      "Every report passes a credibility filter (bot-spam, recycled-media and geotag checks plus an optional AI analyst), then corroborating reports are clustered by location and time into verified incidents. Rejected reports are surfaced as caught disinformation, never silently deleted.",
   },
   {
-    value: "review",
-    icon: <UserCheck className="h-auto w-4 shrink-0" />,
-    label: "Human review",
-    content: {
-      badge: "Stage 03 · Review",
-      title: "People decide. The system assists.",
-      description:
-        "Escalation always requires a human decision. Reviewers see the evidence, the confidence breakdown and the stated reason behind every machine suggestion — evidence-based escalation, end to end.",
-      buttonText: "Start reviewing",
-      imageSrc:
-        "https://images.unsplash.com/photo-1551434678-e076c223a692?auto=format&fit=crop&w=1200&q=80",
-      imageAlt: "Team working together in front of monitors",
-    },
+    icon: <UserCheck className="h-5 w-5" />,
+    badge: "Stage 03 · Review",
+    title: "People decide. The system assists.",
+    description:
+      "Reviewers see the evidence, the confidence breakdown and the stated reason behind every machine suggestion. Escalation stays a human decision, evidence-based from end to end.",
   },
 ];
 
@@ -93,7 +68,7 @@ export default function Landing({
             </div>
             <div className="flex items-center gap-4">
               <span className="hidden font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground sm:block">
-                Concept demo
+                Hackathon demo
               </span>
               <ThemeToggle theme={theme} onToggle={onToggleTheme} />
             </div>
@@ -156,29 +131,66 @@ export default function Landing({
             className="cl-rise mt-10 font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground"
             style={{ animationDelay: "0.6s" }}
           >
-            Mock crisis dataset · Human-in-the-loop review
+            Live open-source feeds · Human-in-the-loop review
           </p>
         </section>
 
-        {/* Pipeline explainer */}
-        <div id="how-it-works" className="border-t border-border">
-          <Feature108
-            badge="Human-in-the-loop pipeline"
-            heading="From raw signal to reviewed incident"
-            description="Three stages. Every decision auditable, every escalation confirmed by a person."
-            tabs={PIPELINE_TABS}
-            onTabButtonClick={onBegin}
-          />
-        </div>
+        {/* Pipeline explainer: three stages, no imagery */}
+        <section id="how-it-works" className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-20 lg:py-24">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <span className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-foreground">
+                Human-in-the-loop pipeline
+              </span>
+              <h2 className="max-w-2xl font-display text-3xl font-semibold md:text-4xl">
+                From raw signal to reviewed incident
+              </h2>
+              <p className="max-w-xl text-muted-foreground">
+                Three stages. Every decision auditable, every escalation confirmed
+                by a person.
+              </p>
+            </div>
+
+            <ol className="mt-12 grid gap-5 lg:grid-cols-3">
+              {STAGES.map((stage) => (
+                <li
+                  key={stage.badge}
+                  className="flex flex-col gap-4 rounded-2xl border border-border bg-muted/30 p-6 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-border bg-background text-gold">
+                      {stage.icon}
+                    </span>
+                    <span className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
+                      {stage.badge}
+                    </span>
+                  </div>
+                  <h3 className="font-display text-xl font-semibold">{stage.title}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">
+                    {stage.description}
+                  </p>
+                </li>
+              ))}
+            </ol>
+
+            <div className="mt-10 flex justify-center">
+              <Button size="lg" onClick={onBegin} className="gap-2 font-semibold">
+                Open the dashboard
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </section>
 
         {/* Footer */}
         <footer className="border-t border-border">
           <div className="mx-auto flex max-w-6xl flex-col gap-2 px-6 py-8 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-muted-foreground">
-              Demonstration interface — not an operational warning system.
+              Demonstration interface, not an operational warning system.
+              {" "}IPAI × Public Makers × Komm.one hackathon · June 2026.
             </p>
             <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted-foreground">
-              SYS 0.1.0 · Mock feed
+              SYS 0.2.0 · Live OSINT
             </p>
           </div>
         </footer>

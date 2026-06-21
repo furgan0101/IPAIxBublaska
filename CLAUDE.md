@@ -12,18 +12,18 @@ Global system prompt and operating guide for the **Automated OSINT Situational A
 - **Geospatial** — `logic/geospatial.py`: **Geopy** geodesic clustering (same event type + **1.0 km radius** + **60 min window** → one `VerifiedIncident`). PostGIS is the scale-up path once a real DB lands; the MVP is in-memory.
 - **Responder guidance** — `logic/guidance.py`: deterministic `severity` grading + per-incident `action_hint` (the challenge's "action hints"); embedded into each `VerifiedIncident` together with its `sources` timeline. The event taxonomy (`KNOWN_EVENT_TYPES`, 27 classes) mirrors the **BW Ministry of the Interior crisis catalogue** (natural hazards, tech/industrial, CBRN, pandemic, terrorism/security, supply crises, evacuations); the LLM classifier and `frontend/src/lib/eventMeta.tsx` are constrained/synced to it.
 - **Schemas** — `schemas.py`: Pydantic models `RawReport`, `SourceReport`, `VerifiedIncident`, `DebunkedReport` (frontend mirror: `frontend/src/lib/types.ts` — keep in sync).
-- **Live ingestion** — `backend/ingestion/`: keyless real-data connectors (NINA civil-protection warnings, Presseportal police RSS, Mastodon hashtags) with event classifier, Konstanz gazetteer + rate-limited Nominatim fallback geocoding, and a SQLite store (`backend/data/`, gitignored). Opt-in via `FEEDS_ENABLED=true` in `backend/.env` — the synthetic mock feed stays the offline default. Every live item flows through the same credibility filter + clustering. See `docs/LIVE_DATA.md`.
-- **API** — `main.py`: `GET /api/incidents`, `GET /api/debunked`, `GET /api/health` (reports `ai_mode` and `data_mode`), plus `POST /api/reports` (live injection), `POST /api/reset` (demo reset), and `POST /api/poll` (trigger a live ingestion cycle); CORS open for `localhost:3000`.
+- **Live ingestion** — `backend/ingestion/`: the **single source of all served data**. Keyless real-data connectors (NINA civil-protection warnings, Presseportal police RSS, Mastodon hashtags) with event classifier, Konstanz gazetteer + rate-limited Nominatim fallback geocoding, and a SQLite store (`backend/data/`, gitignored). `IngestionService` polls on an interval at startup; every item flows through the same credibility filter + clustering. **There is no synthetic feed** — when the feeds are quiet the dashboard is legitimately empty. See `docs/LIVE_DATA.md`.
+- **API** — `main.py`: `GET /api/incidents`, `GET /api/debunked`, `GET /api/health` (reports `ai_mode` and `data_mode`), plus `POST /api/reports` (inject one real report through the pipeline), `POST /api/reset` (wipe the live store + re-poll), and `POST /api/poll` (trigger an ingestion cycle on demand); CORS open for `localhost:3000`.
 
 ### Frontend — Next.js (`frontend/`)
 - **React 19 + Tailwind v4** App Router, TypeScript, `src/` layout. Design tokens (signal palette, glass panels, motion keyframes) live in `src/app/globals.css` (`@theme` / `@utility`); reduced-motion is honored globally.
 - **Leaflet / React-Leaflet** — `src/components/Map.tsx`, client-side-only (dynamic import, `ssr: false`): red pins + 1 km rings on a CARTO dark basemap, hover/select cross-highlighting, fly-to controller, pulse rings on new incidents, amber DEBUNKED flash pin for hoaxes.
 - **Sidebar** — `src/components/Sidebar.tsx`: tabs **Live Incidents** / **Disinfo Caught** (flag-rule badges + `reason_flagged`), swaps to `IncidentDetail.tsx` (dossier: confidence gauge, severity, action hint, source timeline) on selection.
-- **SITREP layer** — `KpiStrip.tsx` (count-up KPIs + type breakdown), `FilterChips.tsx` (filters map + lists), `Toasts.tsx` (verdict notifications), `DemoControls.tsx` (collapsible scenario injector via `src/lib/presets.ts`).
-- **Data layer** — `src/hooks/useDashboard.ts`: single poll loop (5 s) + on-demand refresh returning a snapshot; `useCountUp.ts` for animated numbers; shared event metadata in `src/lib/eventMeta.tsx`. UI state (selection, filter, tab, focus) is composed in `src/app/page.tsx`.
+- **SITREP layer** — `KpiStrip.tsx` (count-up KPIs + type breakdown), `FilterChips.tsx` (filters map + lists), `Toasts.tsx` (verdict notifications).
+- **Data layer** — `src/hooks/useDashboard.ts`: single poll loop (5 s) + on-demand refresh returning a snapshot, the **only** data source (real backend, no synthetic fallback); `src/lib/liveAdapter.ts` translates `VerifiedIncident`/`DebunkedReport` into the `CrisisReport` view model (`src/lib/reportTypes.ts`); shared event metadata in `src/lib/eventMeta.tsx`.
 
 ### Pipeline separation (keep these independently testable)
-1. **Ingestion** — `mock_data.json` → validated `RawReport` list (`main.load_raw_reports`).
+1. **Ingestion** — live connectors (`backend/ingestion/`) → validated `RawReport` list, published by `IngestionService`.
 2. **AI verification** — credibility filter → geo-clustering (`logic/`).
 3. **API routing** — thin FastAPI endpoints over the pipeline result.
 
@@ -32,9 +32,9 @@ Global system prompt and operating guide for the **Automated OSINT Situational A
 ├── backend/
 │   ├── main.py            # FastAPI app + pipeline assembly
 │   ├── schemas.py         # Pydantic models
-│   ├── mock_data.json     # synthetic Konstanz feed (8 reports)
-│   ├── logic/             # verification.py · geospatial.py
-│   └── tests/             # pytest suite (schemas, rules, clustering)
+│   ├── ingestion/         # live OSINT connectors + service + SQLite store
+│   ├── logic/             # verification.py · geospatial.py · guidance.py
+│   └── tests/             # pytest suite (rules, clustering, ingestion — offline)
 ├── frontend/
 │   └── src/               # app/ · components/ · lib/
 ├── package.json           # root: concurrent dev-server runner
@@ -67,7 +67,7 @@ cd frontend && npm run dev
 
 1. **Always type-hint Python code.** Full annotations on every function signature; Pydantic models for all data crossing a boundary.
 2. **Prioritize the "Happy Path" for the MVP.** A flawless end-to-end demo beats exhaustive edge-case coverage. Cut scope, not the demo.
-3. **Mock-by-default for LLM and Vision APIs** to prevent rate-limiting and burned credits — never hit live AI/geocoding APIs during UI testing or pytest. Live mode is a pure config flip: `LITELLM_API_KEY` + `USE_LIVE_AI=true` in `backend/.env` (`/api/health` reports `mock` / `live-ready` / `live`). Tests must stay green offline with zero network calls.
+3. **The running app uses real sources only** — live OSINT feeds + (by default) the live LLM analyst. **Tests are the exception:** pytest must stay green fully offline with **zero network calls** (connectors run against recorded fixtures; the LLM client is monkeypatched), and never hit live AI/geocoding APIs. The LLM is a pure config flip — `USE_LIVE_AI=false` falls back to the deterministic heuristic filter (real logic, no credits). `/api/health` reports `ai_mode` (`mock` / `live-ready` / `live`) and `data_mode`.
 4. **Always use the metric system.** Kilometres, metres, °C — in code, UI copy, and docs.
 5. **Strict JSON output schemas** for all AI-filter logic: constrain the model, validate with Pydantic, fail loudly — no parsing crashes.
 6. **Clean pipeline separation** between data ingestion, AI verification (temporal/spatial checks), and API routing.
@@ -76,6 +76,7 @@ cd frontend && npm run dev
 
 ## Skills
 
-- **`verify-ai-pipeline`** — run backend tests for the extraction schema + 1 km radius math, no live APIs.
-- **`generate-vost-mocks`** — regenerate the synthetic Konstanz feed in `backend/mock_data.json`.
+- **`verify-ai-pipeline`** — run backend tests for the credibility rules + 1 km radius math, no live APIs.
 - **`sync-dashboard`** — verify the frontend fetches/plots backend data; check marker formatting + lint.
+
+> The `generate-vost-mocks` skill is **retired** — there is no synthetic feed anymore (real OSINT only, 2026-06-21).

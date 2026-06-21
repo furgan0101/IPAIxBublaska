@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardList, Megaphone, Radio, type LucideIcon } from "lucide-react";
 
-import type { CrisisReport } from "@/lib/mockReports";
+import type { CrisisReport } from "@/lib/reportTypes";
 import { derivePulse, type Narrative } from "@/lib/mediaResponse";
 import type { PlacedMeasure } from "@/lib/measures";
 import PublicPulsePanel from "./PublicPulsePanel";

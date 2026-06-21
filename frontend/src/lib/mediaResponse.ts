@@ -13,7 +13,7 @@
 
 import { safeNewDate } from "@/lib/format";
 import { getWorkingUrl } from "@/lib/urls";
-import type { CrisisReport } from "@/lib/mockReports";
+import type { CrisisReport } from "@/lib/reportTypes";
 
 /* ------------------------------------------------ deterministic noise */
 

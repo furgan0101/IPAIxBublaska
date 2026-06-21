@@ -1,19 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import {
   AtSign,
-  CheckCircle2,
   Clock,
   CloudLightning,
   ExternalLink,
   FileDown,
-  ListChecks,
   Lock,
   MapPin,
   MessagesSquare,
   Newspaper,
-  Send,
   ShieldAlert,
   UserRound,
   X,
@@ -24,7 +21,7 @@ import {
   type Credibility,
   type CrisisReport,
   type SourceType,
-} from "@/lib/mockReports";
+} from "@/lib/reportTypes";
 import { safeNewDate, timeAgo } from "@/lib/format";
 import ConfidenceRing from "./ConfidenceRing";
 
@@ -58,17 +55,6 @@ const RISK_CLS: Record<CrisisReport["riskLevel"], string> = {
   Low: "border-border bg-muted text-muted-foreground",
 };
 
-/** Colour-coded responder agency badges (BW conventions). */
-const AGENCY_BADGE: Record<string, string> = {
-  Feuerwehr: "border-red-600/30 bg-red-500/10 text-red-700 dark:text-red-300",
-  Polizei: "border-blue-600/30 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-  THW: "border-cyan-600/30 bg-cyan-500/10 text-cyan-700 dark:text-cyan-300",
-  Rettungsdienst:
-    "border-emerald-600/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  LRA: "border-amber-600/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-};
-const AGENCY_BADGE_FALLBACK = "border-border bg-muted text-muted-foreground";
-
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
     <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -80,8 +66,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 interface DetailPanelProps {
   report: CrisisReport | null;
   onClose: () => void;
-  /** Manual Leitstelle handoff; resolves true on success (enables the UI flip). */
-  onDispatch?: (report: CrisisReport) => Promise<boolean>;
   /** Export this incident as a printable single-event PDF. */
   onExportPdf?: (report: CrisisReport) => void;
 }
@@ -93,7 +77,6 @@ interface DetailPanelProps {
 export default function DetailPanel({
   report,
   onClose,
-  onDispatch,
   onExportPdf,
 }: DetailPanelProps) {
   const lastReport = useRef<CrisisReport | null>(null);
@@ -112,7 +95,6 @@ export default function DetailPanel({
             key={shown.id}
             report={shown}
             onClose={onClose}
-            onDispatch={onDispatch}
             onExportPdf={onExportPdf}
           />
         )}
@@ -121,128 +103,13 @@ export default function DetailPanel({
   );
 }
 
-/**
- * SOP Action Checklist + Leitstelle dispatch. Checkbox ticks are local UI
- * state (responder's working notes); the dispatch handoff is server state
- * and completes the whole list. Remounts per incident via the parent key.
- */
-function SopChecklist({
-  report,
-  onDispatch,
-}: {
-  report: CrisisReport;
-  onDispatch?: (report: CrisisReport) => Promise<boolean>;
-}) {
-  const tasks = report.sopTasks ?? [];
-  const [localDone, setLocalDone] = useState<Record<string, boolean>>({});
-  const [busy, setBusy] = useState(false);
-  // Optimistic flip so the badge appears before the next poll round-trip.
-  const [localDispatchedAt, setLocalDispatchedAt] = useState<string | null>(null);
-
-  const dispatched = Boolean(report.dispatched) || localDispatchedAt !== null;
-  const dispatchedAt = report.dispatchedAt ?? localDispatchedAt;
-
-  const handleDispatch = async (): Promise<void> => {
-    if (!onDispatch || busy || dispatched) return;
-    setBusy(true);
-    try {
-      if (await onDispatch(report)) {
-        setLocalDispatchedAt(new Date().toISOString());
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (tasks.length === 0) return null;
-
-  return (
-    <section>
-      <div className="flex items-center gap-2">
-        <ListChecks className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-        <SectionLabel>SOP action checklist</SectionLabel>
-      </div>
-      <ul className="mt-2.5 space-y-1.5">
-        {tasks.map((task) => {
-          const checked = dispatched || task.completed || Boolean(localDone[task.task]);
-          return (
-            <li key={task.task}>
-              <label
-                className={`flex items-start gap-2.5 rounded-lg border border-border bg-card px-3.5 py-2.5 transition-colors ${
-                  dispatched ? "" : "cursor-pointer hover:bg-muted/60"
-                }`}
-              >
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  disabled={dispatched}
-                  onChange={() =>
-                    setLocalDone((prev) => ({ ...prev, [task.task]: !checked }))
-                  }
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-emerald-600"
-                />
-                <span
-                  className={`min-w-0 flex-1 text-[13px] leading-snug ${
-                    checked
-                      ? "text-muted-foreground line-through"
-                      : "text-foreground/90"
-                  }`}
-                >
-                  {task.task}
-                </span>
-                <span
-                  className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
-                    AGENCY_BADGE[task.agency] ?? AGENCY_BADGE_FALLBACK
-                  }`}
-                >
-                  {task.agency}
-                </span>
-              </label>
-            </li>
-          );
-        })}
-      </ul>
-
-      {dispatched ? (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-600/40 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-          <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden />
-          Dispatched to Control Center
-          {dispatchedAt && (
-            <span className="ml-auto font-mono text-[11px] font-normal tabular-nums">
-              {safeNewDate(dispatchedAt).toLocaleTimeString("de-DE", {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
-              local
-            </span>
-          )}
-        </div>
-      ) : (
-        onDispatch && (
-          <button
-            type="button"
-            onClick={() => void handleDispatch()}
-            disabled={busy}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
-          >
-            <Send className="h-4 w-4" aria-hidden />
-            {busy ? "Dispatching…" : "Dispatch to Leitstelle"}
-          </button>
-        )
-      )}
-    </section>
-  );
-}
-
 function PanelContent({
   report,
   onClose,
-  onDispatch,
   onExportPdf,
 }: {
   report: CrisisReport;
   onClose: () => void;
-  onDispatch?: (report: CrisisReport) => Promise<boolean>;
   onExportPdf?: (report: CrisisReport) => void;
 }) {
   const meta = STATUS_META[report.status];
@@ -360,8 +227,6 @@ function PanelContent({
             </p>
           </section>
         )}
-
-        <SopChecklist report={report} onDispatch={onDispatch} />
 
         <section className="rounded-lg border border-border bg-card p-5">
           <SectionLabel>AI-assisted confidence</SectionLabel>

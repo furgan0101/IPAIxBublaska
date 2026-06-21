@@ -29,11 +29,18 @@ DEFAULT_PRESSEPORTAL_FEEDS: tuple[str, ...] = (
 # NINA regions: 12-digit ARS keys at district granularity (Landkreis Konstanz).
 DEFAULT_NINA_REGIONS: tuple[str, ...] = ("083350000000",)
 
+# City-agnostic crisis topics — no hardcoded city tags, so every searched city
+# is treated equally (results are scoped geographically in the UI, not by tag).
 DEFAULT_MASTODON_TAGS: tuple[str, ...] = (
-    "konstanz",
-    "bodensee",
     "hochwasser",
     "unwetter",
+    "polizei",
+    "feuerwehr",
+    "brand",
+    "unfall",
+    "sturm",
+    "gewitter",
+    "blaulicht",
 )
 
 
@@ -74,6 +81,7 @@ class IngestionSettings:
     mastodon_instance: str
     mastodon_tags: tuple[str, ...]
     nominatim_enabled: bool
+    national: bool
     request_timeout_s: float
     user_agent: str
 
@@ -100,6 +108,9 @@ class IngestionSettings:
             ).rstrip("/"),
             mastodon_tags=_csv("MASTODON_TAGS", DEFAULT_MASTODON_TAGS),
             nominatim_enabled=_flag("NOMINATIM_ENABLED", default=True),
+            # National mode: geocode unbounded + drop the sector gate, so any
+            # city searched in the UI surfaces its news (Lever A).
+            national=_flag("INGEST_NATIONAL", default=False),
             request_timeout_s=max(3.0, _number("FEEDS_TIMEOUT_S", 15.0)),
             user_agent=os.getenv(
                 "FEEDS_USER_AGENT",

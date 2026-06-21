@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { STATUS_META, type CrisisReport } from "@/lib/mockReports";
+import { STATUS_META, type CrisisReport } from "@/lib/reportTypes";
 import { safeNewDate } from "@/lib/format";
 
 /** Konstanz demo sector — fixed for the situation report header. */

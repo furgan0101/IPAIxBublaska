@@ -10,8 +10,14 @@ import pytest
 from logic import verification
 from logic.geospatial import cluster_reports
 from logic.guidance import severity_for
-from logic.verification import assess_report
-from main import load_raw_reports, reset_state, run_pipeline, state, submit_report
+from logic.verification import assess_report, filter_reports
+from main import (
+    _apply_dispatch_state,
+    _dispatch_registry,
+    run_pipeline,
+    state,
+    submit_report,
+)
 from schemas import RawReport, ReportSubmission
 
 NOW = datetime(2026, 6, 12, 14, 0, tzinfo=timezone.utc)
@@ -46,13 +52,59 @@ def make_report(**overrides: object) -> RawReport:
     return RawReport.model_validate(base)
 
 
+# A small, explicit Konstanz-sector report set for pipeline-level tests. The
+# production API is fed exclusively by the live ingestion service; this inline
+# fixture stands in for "a batch of reports" so the filter + clustering + state
+# assembly stay covered offline (zero network), with no synthetic product feed.
+# Stamped at real "now" so live injections (also stamped now) fall inside the
+# 60-minute cluster window, exactly as they would against live data.
+DEMO_NOW = datetime.now(timezone.utc)
+
+DEMO_REPORTS: list[RawReport] = [
+    make_report(
+        id="D-FLOOD-1", event_type="flood", lat=47.6600, lon=9.1760,
+        timestamp=DEMO_NOW,
+    ),
+    make_report(
+        id="D-FLOOD-2",
+        event_type="flood",
+        lat=47.6608,
+        lon=9.1750,
+        text="Pegel steigt an der Seestraße",
+        timestamp=DEMO_NOW + timedelta(minutes=10),  # same cluster as D-FLOOD-1
+    ),
+    make_report(
+        id="D-FIRE-1", event_type="fire", lat=47.6620, lon=9.1748,
+        text="Rauchsäule über der Altstadt", timestamp=DEMO_NOW,
+    ),
+    make_report(
+        id="D-STORM-1", event_type="storm", lat=47.6700, lon=9.1900,
+        text="Sturmböen werfen Äste auf die Mainaustraße", timestamp=DEMO_NOW,
+    ),
+    make_report(
+        id="D-POWER-1", event_type="power_outage", lat=47.6550, lon=9.1850,
+        text="Stromausfall in Petershausen-Ost", timestamp=DEMO_NOW,
+    ),
+    make_report(  # bot-spam hoax -> debunked by the heuristic layer
+        id="D-HOAX-1", event_type="flood", lat=47.6580, lon=9.1700,
+        text="BREAKING!!! Staudamm gebrochen! SHARE BEFORE THEY DELETE THIS!!!",
+        timestamp=DEMO_NOW,
+    ),
+]
+
+
+def _seed_state(reports: list[RawReport] = DEMO_REPORTS) -> None:
+    """Seed the in-memory API state from an explicit report set. Test-only:
+    production assembles the same state from the live ingestion snapshot."""
+    _dispatch_registry.clear()
+    credible, debunked = filter_reports(reports)
+    state["credible"] = credible
+    state["debunked"] = debunked
+    state["incidents"] = _apply_dispatch_state(cluster_reports(credible))
+    state["live_seq"] = 0
+
+
 # --- Heuristic layer ------------------------------------------------------------
-
-
-def test_mock_data_matches_raw_report_schema() -> None:
-    """Every mock-feed item must parse as a RawReport (count is feed-dependent)."""
-    reports = load_raw_reports()
-    assert len(reports) >= 12
 
 
 def test_recycled_footage_is_flagged() -> None:
@@ -101,14 +153,14 @@ def test_reports_outside_radius_stay_separate() -> None:
     assert len(incidents) == 2
 
 
-def test_full_pipeline_on_mock_data() -> None:
-    """Invariants that hold for any regenerated feed: nothing lost, hoaxes
-    caught, the canonical Konstanz demo scenarios present."""
-    reports = load_raw_reports()
-    result = run_pipeline(reports)
+def test_full_pipeline_conserves_reports_and_surfaces_event_types() -> None:
+    """Pipeline invariants: nothing is lost (every report becomes a clustered
+    source or a debunk), hoaxes are caught, and distinct event types cluster
+    independently."""
+    result = run_pipeline(DEMO_REPORTS)
     assert len(result["debunked"]) > 0
     credible_count = sum(i.report_count for i in result["incidents"])
-    assert credible_count + len(result["debunked"]) == len(reports)
+    assert credible_count + len(result["debunked"]) == len(DEMO_REPORTS)
     assert {"flood", "fire", "storm", "power_outage"} <= {
         i.event_type for i in result["incidents"]
     }
@@ -143,7 +195,7 @@ def test_bw_ministry_taxonomy_is_complete() -> None:
 
 
 def test_incidents_carry_guidance_and_sources() -> None:
-    result = run_pipeline(load_raw_reports())
+    result = run_pipeline(DEMO_REPORTS)
     flood = next(i for i in result["incidents"] if i.event_type == "flood")
     assert flood.severity == "high"
     assert flood.action_hint and "Low corroboration" not in flood.action_hint
@@ -256,7 +308,7 @@ def test_moderate_severity_never_auto_dispatches() -> None:
 def test_manual_dispatch_completes_checklist_and_persists() -> None:
     from main import dispatch_incident
 
-    reset_state()
+    _seed_state()
     target = next(i for i in state["incidents"] if not i.dispatched)
     updated = dispatch_incident(target.id)
     assert updated.dispatched
@@ -271,7 +323,7 @@ def test_dispatch_unknown_incident_raises_404() -> None:
 
     from main import dispatch_incident
 
-    reset_state()
+    _seed_state()
     with pytest.raises(HTTPException) as excinfo:
         dispatch_incident("INC-999")
     assert excinfo.value.status_code == 404
@@ -281,7 +333,7 @@ def test_dispatch_unknown_incident_raises_404() -> None:
 
 
 def test_inject_corroborating_flood_merges() -> None:
-    reset_state()
+    _seed_state()
     before = next(i for i in state["incidents"] if i.event_type == "flood")
     result = submit_report(
         ReportSubmission(
@@ -299,7 +351,7 @@ def test_inject_corroborating_flood_merges() -> None:
 
 
 def test_inject_new_sector_creates_incident() -> None:
-    reset_state()
+    _seed_state()
     before = len(state["incidents"])
     result = submit_report(
         ReportSubmission(
@@ -315,7 +367,7 @@ def test_inject_new_sector_creates_incident() -> None:
 
 
 def test_inject_recycled_footage_is_debunked() -> None:
-    reset_state()
+    _seed_state()
     before = len(state["debunked"])
     result = submit_report(
         ReportSubmission(
@@ -333,7 +385,7 @@ def test_inject_recycled_footage_is_debunked() -> None:
 
 
 def test_inject_botspam_is_debunked() -> None:
-    reset_state()
+    _seed_state()
     result = submit_report(
         ReportSubmission(
             author="panik_news_de",
